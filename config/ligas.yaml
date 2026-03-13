@@ -1,0 +1,31 @@
+ligas:
+
+  Argentina:
+    url: https://www.football-data.co.uk/new/ARG.csv
+
+  Premier_League:
+    url: https://www.football-data.co.uk/mmz4281/2526/E0.csv
+
+  La_Liga:
+    url: https://www.football-data.co.uk/mmz4281/2526/SP1.csv
+
+  Serie_A:
+    url: https://www.football-data.co.uk/mmz4281/2526/I1.csv
+
+  Bundesliga:
+    url: https://www.football-data.co.uk/mmz4281/2526/D1.csv
+
+  Ligue_1:
+    url: https://www.football-data.co.uk/mmz4281/2526/F1.csv
+
+  Eredivisie:
+    url: https://www.football-data.co.uk/mmz4281/2526/N1.csv
+
+  Portugal:
+    url: https://www.football-data.co.uk/mmz4281/2526/P1.csv
+
+  Brasil:
+    url: https://www.football-data.co.uk/new/BRA.csv
+
+  MLS:
+    url: https://www.football-data.co.uk/new/USA.csv
