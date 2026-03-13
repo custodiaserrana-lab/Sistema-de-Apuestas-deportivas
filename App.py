@@ -5,6 +5,7 @@ from io import StringIO
 import os
 import logging
 from datetime import datetime
+from bs4 import BeautifulSoup
 
 # ===============================
 # 1. CONFIGURACION GLOBAL
