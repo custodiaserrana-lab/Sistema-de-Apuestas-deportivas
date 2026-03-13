@@ -4,12 +4,12 @@ import requests
 from io import StringIO
 import os
 import logging
-from datetime import datetime
 import yaml
+from datetime import datetime, timedelta, timezone
 
-# ============================
-# RUTAS BASE (siempre correctas)
-# ============================
+# ===============================
+# RUTAS BASE
+# ===============================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
@@ -19,20 +19,11 @@ CONFIG_DIR = os.path.join(BASE_DIR, "config")
 os.makedirs(LOGS_DIR, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
-# ============================
-# CONFIGURACION DEL SISTEMA
-# ============================
+# ===============================
+# CONFIGURACION GLOBAL
+# ===============================
 
-BANKROLL_ARS = 30000
-UNIDADES_BASE = 100
-STAKE_UNIDADES = 2
-VALOR_UNIDAD = BANKROLL_ARS / UNIDADES_BASE
 EDGE_MINIMO = 3.0
-
-# ============================
-# CONFIGURAR LOGS
-# ============================
-
 fecha = datetime.now().strftime("%Y-%m-%d")
 
 logging.basicConfig(
@@ -41,174 +32,366 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-logging.info("Inicio sistema Futbol 2026")
+# ===============================
+# API KEY — The Odds API
+# ===============================
 
-# ============================
-# CARGAR LIGAS DESDE YAML
-# ============================
+# La API key se lee desde variable de entorno para no exponerla en el código.
+# En Streamlit Cloud: Settings → Secrets → agregar ODDS_API_KEY = "tu_token"
+# Localmente: crear archivo .env o setear la variable de entorno
 
-def cargar_ligas():
+import streamlit as st
+
+def get_api_key():
     try:
-        ruta = os.path.join(CONFIG_DIR, "ligas.yaml")
-        with open(ruta, "r") as file:
-            config = yaml.safe_load(file)
-        return config["ligas"]
-    except Exception as e:
-        logging.error(f"No se pudo cargar ligas.yaml: {e}")
-        return {}
+        return st.secrets["ODDS_API_KEY"]
+    except Exception:
+        return os.environ.get("ODDS_API_KEY", "")
 
-# ============================
-# DESCARGA DATOS
-# ============================
+# ===============================
+# LIGAS — mapeo football-data ↔ The Odds API
+# ===============================
 
-def descargar_datos(url):
-    try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            df = pd.read_csv(StringIO(response.text))
-            return df
-    except Exception as e:
-        logging.error(f"Error descarga {url}: {e}")
-    return None
+# The Odds API usa sus propios sport_keys para identificar ligas
+LIGAS_ODDS_API = {
+    "Premier_League":  "soccer_epl",
+    "La_Liga":         "soccer_spain_la_liga",
+    "Serie_A":         "soccer_italy_serie_a",
+    "Bundesliga":      "soccer_germany_bundesliga",
+    "Ligue_1":         "soccer_france_ligue_one",
+    "Eredivisie":      "soccer_netherlands_eredivisie",
+    "Portugal":        "soccer_portugal_primeira_liga",
+    "Argentina":       "soccer_argentina_primera_division",
+    "Brasil":          "soccer_brazil_campeonato",
+    "MLS":             "soccer_usa_mls",
+}
 
-# ============================
-# CALCULO RATING
-# ============================
+# URLs football-data para estadísticas históricas (ratings)
+LIGAS_STATS = {
+    "Premier_League": "https://www.football-data.co.uk/mmz4281/2526/E0.csv",
+    "La_Liga":        "https://www.football-data.co.uk/mmz4281/2526/SP1.csv",
+    "Serie_A":        "https://www.football-data.co.uk/mmz4281/2526/I1.csv",
+    "Bundesliga":     "https://www.football-data.co.uk/mmz4281/2526/D1.csv",
+    "Ligue_1":        "https://www.football-data.co.uk/mmz4281/2526/F1.csv",
+    "Eredivisie":     "https://www.football-data.co.uk/mmz4281/2526/N1.csv",
+    "Portugal":       "https://www.football-data.co.uk/mmz4281/2526/P1.csv",
+    "Argentina":      "https://www.football-data.co.uk/new/ARG.csv",
+    "Brasil":         "https://www.football-data.co.uk/new/BRA.csv",
+    "MLS":            "https://www.football-data.co.uk/new/USA.csv",
+}
 
-def calcular_rating_equipo(df, equipo, fecha_actual):
-    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)
-    pasados = df[df['Date'] < fecha_actual]
-    partidos_equipo = pasados[
-        (pasados['HomeTeam'] == equipo) |
-        (pasados['AwayTeam'] == equipo)
-    ].tail(6)
-
-    if len(partidos_equipo) < 6:
-        return None
-
-    goles_fave = 0
-    goles_contra = 0
-
-    for _, fila in partidos_equipo.iterrows():
-        if fila['HomeTeam'] == equipo:
-            goles_fave += fila['FTHG']
-            goles_contra += fila['FTAG']
-        else:
-            goles_fave += fila['FTAG']
-            goles_contra += fila['FTHG']
-
-    return goles_fave - goles_contra
-
-# ============================
-# MOTOR PROBABILIDADES
-# ============================
+# ===============================
+# MOTOR MATEMATICO
+# ===============================
 
 def motor_probabilidades(x):
-    prob_L = 1.56 * x + 46.47
-    prob_V = 0.03 * (x**2) - 1.27 * x + 23.65
-    prob_E = -0.03 * (x**2) - 0.29 * x + 29.48
-    return prob_L, prob_E, prob_V
+    p_L = 1.56 * x + 46.47
+    p_V = 0.03 * (x**2) - 1.27 * x + 23.65
+    p_E = -0.03 * (x**2) - 0.29 * x + 29.48
+    return p_L, p_E, p_V
 
-# ============================
-# ANALISIS PARTIDOS
-# ============================
+# ===============================
+# CALCULAR RATING DESDE HISTORICO
+# ===============================
 
-def analizar_jornada(nombre_liga, url):
-    df = descargar_datos(url)
+def calcular_ratings_liga(url_csv):
+    """
+    Descarga el CSV histórico y calcula el rating (diferencia goles)
+    de cada equipo en sus últimos 6 partidos jugados.
+    Devuelve un dict: { nombre_equipo: rating }
+    """
+    try:
+        response = requests.get(url_csv, timeout=10)
+        df = pd.read_csv(StringIO(response.text))
+    except Exception as e:
+        logging.error(f"Error descargando stats: {e}")
+        return {}
 
-    if df is None:
-        logging.warning(f"No se pudo analizar {nombre_liga}")
+    columnas_requeridas = ['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR']
+    if any(c not in df.columns for c in columnas_requeridas):
+        return {}
+
+    # Solo partidos ya jugados
+    df = df.dropna(subset=['FTR', 'FTHG', 'FTAG'])
+
+    equipos_historial = {}
+
+    for _, fila in df.iterrows():
+        h = fila['HomeTeam']
+        a = fila['AwayTeam']
+
+        if h not in equipos_historial:
+            equipos_historial[h] = []
+        if a not in equipos_historial:
+            equipos_historial[a] = []
+
+        equipos_historial[h].append(fila['FTHG'] - fila['FTAG'])
+        equipos_historial[a].append(fila['FTAG'] - fila['FTHG'])
+
+    ratings = {}
+    for equipo, historial in equipos_historial.items():
+        ultimos_6 = historial[-6:]
+        if len(ultimos_6) >= 3:  # Mínimo 3 partidos para calcular
+            ratings[equipo] = sum(ultimos_6)
+
+    return ratings
+
+# ===============================
+# OBTENER PARTIDOS PROXIMOS — The Odds API
+# ===============================
+
+def obtener_partidos_con_cuotas(sport_key, api_key, horas=6):
+    """
+    Consulta The Odds API y devuelve partidos de las próximas N horas
+    con cuotas de Pinnacle (bookmaker preferido por el modelo).
+    """
+    ahora = datetime.now(timezone.utc)
+    hasta = ahora + timedelta(hours=horas)
+
+    url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
+    params = {
+        "apiKey": api_key,
+        "regions": "eu",             # Cuotas europeas (incluye Pinnacle)
+        "markets": "h2h",            # Mercado 1X2
+        "oddsFormat": "decimal",
+        "commenceTimeFrom": ahora.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "commenceTimeTo":   hasta.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 401:
+            logging.error("API key inválida o sin permisos")
+            return []
+        if response.status_code == 429:
+            logging.error("Límite de requests alcanzado en The Odds API")
+            return []
+        if response.status_code != 200:
+            logging.error(f"Error {response.status_code} en The Odds API: {sport_key}")
+            return []
+
+        partidos = response.json()
+        logging.info(f"{sport_key}: {len(partidos)} partidos encontrados en próximas {horas}h")
+        return partidos
+
+    except Exception as e:
+        logging.error(f"Excepción consultando The Odds API ({sport_key}): {e}")
         return []
 
-    logging.info(f"Analizando liga {nombre_liga}")
+# ===============================
+# EXTRAER CUOTAS PINNACLE
+# ===============================
 
-    proximos = df[df['FTR'].isna()]
-    apuestas_detectadas = []
+def extraer_cuotas_pinnacle(partido):
+    """
+    Extrae las cuotas de Pinnacle del objeto partido.
+    Si no hay Pinnacle, usa el promedio de los bookmakers disponibles.
+    Devuelve (cuota_home, cuota_draw, cuota_away) o None si no hay datos.
+    """
+    bookmakers = partido.get("bookmakers", [])
+    if not bookmakers:
+        return None
 
-    for idx, fila in proximos.iterrows():
-        home = fila['HomeTeam']
-        away = fila['AwayTeam']
+    # Priorizar Pinnacle
+    preferidos = ["pinnacle", "betfair_ex_eu", "sport888", "williamhill"]
+    mercado = None
 
-        rating_h = calcular_rating_equipo(df, home, fila['Date'])
-        rating_a = calcular_rating_equipo(df, away, fila['Date'])
+    for pref in preferidos:
+        for bk in bookmakers:
+            if bk["key"] == pref:
+                for m in bk.get("markets", []):
+                    if m["key"] == "h2h":
+                        mercado = m
+                        break
+            if mercado:
+                break
+        if mercado:
+            break
 
-        if rating_h is None or rating_a is None:
+    # Si no hay preferido, usar el primero disponible
+    if not mercado:
+        for bk in bookmakers:
+            for m in bk.get("markets", []):
+                if m["key"] == "h2h":
+                    mercado = m
+                    break
+            if mercado:
+                break
+
+    if not mercado:
+        return None
+
+    outcomes = {o["name"]: o["price"] for o in mercado.get("outcomes", [])}
+
+    home_team = partido["home_team"]
+    away_team = partido["away_team"]
+
+    cuota_h = outcomes.get(home_team)
+    cuota_a = outcomes.get(away_team)
+    cuota_d = outcomes.get("Draw")
+
+    if not cuota_h or not cuota_a or not cuota_d:
+        return None
+
+    return cuota_h, cuota_d, cuota_a
+
+# ===============================
+# NORMALIZAR NOMBRE DE EQUIPO
+# ===============================
+
+def normalizar_nombre(nombre):
+    """
+    Limpia y normaliza nombres de equipos para comparar
+    entre The Odds API y football-data.co.uk
+    """
+    reemplazos = {
+        "FC": "", "CF": "", "AC": "", "SC": "", "AS": "",
+        "United": "Utd", "Athletic Club": "Athletic Bilbao",
+        "Atlético": "Atletico", "Internazionale": "Inter",
+        "Hellas Verona": "Verona",
+    }
+    nombre = nombre.strip()
+    for k, v in reemplazos.items():
+        nombre = nombre.replace(k, v)
+    return nombre.strip().lower()
+
+def buscar_rating(nombre_odds_api, ratings_dict):
+    """
+    Busca el rating de un equipo haciendo matching flexible de nombres.
+    """
+    nombre_norm = normalizar_nombre(nombre_odds_api)
+
+    for equipo_csv, rating in ratings_dict.items():
+        if normalizar_nombre(equipo_csv) == nombre_norm:
+            return rating
+
+    # Matching parcial si no hay exacto
+    for equipo_csv, rating in ratings_dict.items():
+        if nombre_norm in normalizar_nombre(equipo_csv) or \
+           normalizar_nombre(equipo_csv) in nombre_norm:
+            return rating
+
+    return None
+
+# ===============================
+# ANALIZAR UNA LIGA
+# ===============================
+
+def analizar_liga(nombre_liga, sport_key, url_stats, api_key, horas=6):
+    """
+    Combina cuotas en tiempo real (The Odds API) con ratings históricos
+    (football-data) para detectar value bets en los próximos partidos.
+    """
+    logging.info(f"Analizando {nombre_liga}...")
+
+    # 1. Obtener partidos próximos con cuotas
+    partidos = obtener_partidos_con_cuotas(sport_key, api_key, horas)
+    if not partidos:
+        return []
+
+    # 2. Calcular ratings históricos
+    ratings = calcular_ratings_liga(url_stats)
+    if not ratings:
+        logging.warning(f"{nombre_liga}: no se pudieron calcular ratings históricos")
+
+    apuestas = []
+
+    for partido in partidos:
+        home = partido["home_team"]
+        away = partido["away_team"]
+        commence = partido.get("commence_time", "")
+
+        # Convertir hora UTC a legible
+        try:
+            dt = datetime.strptime(commence, "%Y-%m-%dT%H:%M:%SZ")
+            dt = dt.replace(tzinfo=timezone.utc)
+            hora_local = dt.strftime("%d/%m %H:%M UTC")
+        except Exception:
+            hora_local = commence
+
+        # Extraer cuotas
+        cuotas = extraer_cuotas_pinnacle(partido)
+        if not cuotas:
             continue
 
-        x = rating_h - rating_a
+        cuota_h, cuota_d, cuota_a = cuotas
+
+        # Buscar ratings
+        rating_h = buscar_rating(home, ratings)
+        rating_a = buscar_rating(away, ratings)
+
+        # Si no hay ratings, usar 0 (modelo sin ventaja histórica)
+        r_h = rating_h if rating_h is not None else 0
+        r_a = rating_a if rating_a is not None else 0
+        tiene_stats = rating_h is not None and rating_a is not None
+
+        x = r_h - r_a
         p_mod_L, p_mod_E, p_mod_V = motor_probabilidades(x)
 
-        cuotas = {
-            'L': fila['PSH'],
-            'E': fila['PSD'],
-            'V': fila['PSA']
-        }
+        mercados = [
+            ("H", p_mod_L, cuota_h, "Local"),
+            ("D", p_mod_E, cuota_d, "Empate"),
+            ("A", p_mod_V, cuota_a, "Visitante"),
+        ]
 
-        for tipo, cuota in cuotas.items():
-            if pd.isna(cuota):
+        for tipo, p_mod, cuota, label in mercados:
+            if cuota <= 1.0:
                 continue
 
             p_impl = 100 / cuota
-
-            if tipo == 'L':
-                p_mod = p_mod_L
-            elif tipo == 'E':
-                p_mod = p_mod_E
-            else:
-                p_mod = p_mod_V
-
             edge = p_mod - p_impl
 
             if edge >= EDGE_MINIMO:
-                logging.info(f"VALUE BET {home} vs {away} {tipo} edge {edge}")
-                apuestas_detectadas.append({
-                    "liga": nombre_liga,
-                    "local": home,
-                    "visitante": away,
-                    "tipo": tipo,
-                    "cuota": cuota,
-                    "edge": round(edge, 2),
-                    "rating": x
+                apuestas.append({
+                    "liga":        nombre_liga,
+                    "hora":        hora_local,
+                    "local":       home,
+                    "visitante":   away,
+                    "tipo":        tipo,
+                    "apuesta":     label,
+                    "cuota":       round(cuota, 2),
+                    "prob_modelo": round(p_mod, 1),
+                    "prob_impl":   round(p_impl, 1),
+                    "edge":        round(edge, 2),
+                    "con_stats":   "✅" if tiene_stats else "⚠️ sin historial",
                 })
 
-    return apuestas_detectadas
+    logging.info(f"{nombre_liga}: {len(apuestas)} value bets detectadas")
+    return apuestas
 
-# ============================
-# GUARDAR REPORTES
-# ============================
+# ===============================
+# GUARDAR REPORTE
+# ===============================
 
-def guardar_reportes(apuestas):
-    if len(apuestas) == 0:
-        logging.info("No se detectaron apuestas")
+def guardar_reporte(apuestas):
+    if not apuestas:
         return
-
     df = pd.DataFrame(apuestas)
+    ruta = os.path.join(REPORTS_DIR, "value_bets.csv")
+    df.to_csv(ruta, index=False)
+    logging.info(f"Reporte guardado: {ruta}")
 
-    # Nombre fijo para que streamlit_app.py siempre lo encuentre
-    archivo = os.path.join(REPORTS_DIR, "value_bets.csv")
-    df.to_csv(archivo, index=False)
-    logging.info(f"Reporte guardado en {archivo}")
+# ===============================
+# FUNCION PRINCIPAL
+# ===============================
 
-# ============================
-# FUNCION PRINCIPAL (llamable desde streamlit)
-# ============================
+def run(horas=6):
+    api_key = get_api_key()
+    if not api_key:
+        raise ValueError("No se encontró ODDS_API_KEY. Configurala en Streamlit Secrets.")
 
-def run():
-    ligas = cargar_ligas()
     todas_apuestas = []
 
-    for nombre, datos in ligas.items():
-        apuestas = analizar_jornada(nombre, datos["url"])
+    for nombre, sport_key in LIGAS_ODDS_API.items():
+        url_stats = LIGAS_STATS.get(nombre, "")
+        apuestas = analizar_liga(nombre, sport_key, url_stats, api_key, horas)
         todas_apuestas.extend(apuestas)
 
-    guardar_reportes(todas_apuestas)
-    logging.info("Analisis finalizado")
-
-    return todas_apuestas  # Devuelve los datos para que streamlit los muestre
-
-# ============================
-# EJECUCION DIRECTA (opcional)
-# ============================
+    guardar_reporte(todas_apuestas)
+    logging.info(f"Total value bets detectadas: {len(todas_apuestas)}")
+    return todas_apuestas
 
 if __name__ == "__main__":
-    run()
+    resultados = run(horas=6)
+    for r in resultados:
+        print(r)
