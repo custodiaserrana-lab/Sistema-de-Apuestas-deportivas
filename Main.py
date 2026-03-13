@@ -5,6 +5,7 @@ from io import StringIO
 import os
 import logging
 from datetime import datetime
+import yaml
 
 # ============================
 # CONFIGURACION DEL SISTEMA
@@ -38,13 +39,24 @@ logging.basicConfig(
 logging.info("Inicio sistema Futbol 2026")
 
 # ============================
-# LIGAS A ANALIZAR
+# CARGAR LIGAS DESDE YAML
 # ============================
 
-URLS = {
-    "Argentina": "https://www.football-data.co.uk/new/ARG.csv",
-    "Premier_League": "https://www.football-data.co.uk/mmz4281/2526/E0.csv"
-}
+def cargar_ligas():
+
+    try:
+
+        with open("config/ligas.yaml", "r") as file:
+
+            config = yaml.safe_load(file)
+
+        return config["ligas"]
+
+    except Exception as e:
+
+        logging.error(f"No se pudo cargar ligas.yaml: {e}")
+
+        return {}
 
 # ============================
 # DESCARGA DATOS
@@ -202,4 +214,28 @@ def guardar_reportes(apuestas):
 
     df = pd.DataFrame(apuestas)
 
-    archivo
+    archivo = f"reports/value_bets_{fecha}.csv"
+
+    df.to_csv(archivo, index=False)
+
+    logging.info(f"Reporte guardado {archivo}")
+
+# ============================
+# BLOQUE PRINCIPAL
+# ============================
+
+if __name__ == "__main__":
+
+    ligas = cargar_ligas()
+
+    todas_apuestas = []
+
+    for nombre,datos in ligas.items():
+
+        apuestas = analizar_jornada(nombre, datos["url"])
+
+        todas_apuestas.extend(apuestas)
+
+    guardar_reportes(todas_apuestas)
+
+    logging.info("Analisis finalizado")
