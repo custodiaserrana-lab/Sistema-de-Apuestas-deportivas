@@ -331,9 +331,6 @@ with tab3:
         st.divider()
         st.subheader("Último reporte guardado")
         st.dataframe(pd.read_csv(csv_path), use_container_width=True)
-        except Exception as e:
-            st.error(f"Error en detección en vivo: {e}")
-
     csv_path = os.path.join(BASE_DIR, "reports", "value_bets.csv")
     if os.path.exists(csv_path):
         st.subheader("Último reporte guardado")
