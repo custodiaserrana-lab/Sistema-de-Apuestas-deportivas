@@ -8,6 +8,18 @@ from datetime import datetime
 import yaml
 
 # ============================
+# RUTAS BASE (siempre correctas)
+# ============================
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOGS_DIR = os.path.join(BASE_DIR, "logs")
+REPORTS_DIR = os.path.join(BASE_DIR, "reports")
+CONFIG_DIR = os.path.join(BASE_DIR, "config")
+
+os.makedirs(LOGS_DIR, exist_ok=True)
+os.makedirs(REPORTS_DIR, exist_ok=True)
+
+# ============================
 # CONFIGURACION DEL SISTEMA
 # ============================
 
@@ -18,20 +30,13 @@ VALOR_UNIDAD = BANKROLL_ARS / UNIDADES_BASE
 EDGE_MINIMO = 3.0
 
 # ============================
-# CREAR CARPETAS
-# ============================
-
-os.makedirs("logs", exist_ok=True)
-os.makedirs("reports", exist_ok=True)
-
-# ============================
 # CONFIGURAR LOGS
 # ============================
 
 fecha = datetime.now().strftime("%Y-%m-%d")
 
 logging.basicConfig(
-    filename=f"logs/log_{fecha}.txt",
+    filename=os.path.join(LOGS_DIR, f"log_{fecha}.txt"),
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -43,19 +48,13 @@ logging.info("Inicio sistema Futbol 2026")
 # ============================
 
 def cargar_ligas():
-
     try:
-
-        with open("config/ligas.yaml", "r") as file:
-
+        ruta = os.path.join(CONFIG_DIR, "ligas.yaml")
+        with open(ruta, "r") as file:
             config = yaml.safe_load(file)
-
         return config["ligas"]
-
     except Exception as e:
-
         logging.error(f"No se pudo cargar ligas.yaml: {e}")
-
         return {}
 
 # ============================
@@ -63,21 +62,13 @@ def cargar_ligas():
 # ============================
 
 def descargar_datos(url):
-
     try:
-
-        response = requests.get(url)
-
+        response = requests.get(url, timeout=10)
         if response.status_code == 200:
-
             df = pd.read_csv(StringIO(response.text))
-
             return df
-
     except Exception as e:
-
         logging.error(f"Error descarga {url}: {e}")
-
     return None
 
 # ============================
@@ -85,11 +76,8 @@ def descargar_datos(url):
 # ============================
 
 def calcular_rating_equipo(df, equipo, fecha_actual):
-
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)
-
     pasados = df[df['Date'] < fecha_actual]
-
     partidos_equipo = pasados[
         (pasados['HomeTeam'] == equipo) |
         (pasados['AwayTeam'] == equipo)
@@ -102,14 +90,10 @@ def calcular_rating_equipo(df, equipo, fecha_actual):
     goles_contra = 0
 
     for _, fila in partidos_equipo.iterrows():
-
         if fila['HomeTeam'] == equipo:
-
             goles_fave += fila['FTHG']
             goles_contra += fila['FTAG']
-
         else:
-
             goles_fave += fila['FTAG']
             goles_contra += fila['FTHG']
 
@@ -120,11 +104,9 @@ def calcular_rating_equipo(df, equipo, fecha_actual):
 # ============================
 
 def motor_probabilidades(x):
-
     prob_L = 1.56 * x + 46.47
     prob_V = 0.03 * (x**2) - 1.27 * x + 23.65
     prob_E = -0.03 * (x**2) - 0.29 * x + 29.48
-
     return prob_L, prob_E, prob_V
 
 # ============================
@@ -132,23 +114,18 @@ def motor_probabilidades(x):
 # ============================
 
 def analizar_jornada(nombre_liga, url):
-
     df = descargar_datos(url)
 
     if df is None:
-
         logging.warning(f"No se pudo analizar {nombre_liga}")
-
         return []
 
     logging.info(f"Analizando liga {nombre_liga}")
 
     proximos = df[df['FTR'].isna()]
-
     apuestas_detectadas = []
 
     for idx, fila in proximos.iterrows():
-
         home = fila['HomeTeam']
         away = fila['AwayTeam']
 
@@ -159,7 +136,6 @@ def analizar_jornada(nombre_liga, url):
             continue
 
         x = rating_h - rating_a
-
         p_mod_L, p_mod_E, p_mod_V = motor_probabilidades(x)
 
         cuotas = {
@@ -169,7 +145,6 @@ def analizar_jornada(nombre_liga, url):
         }
 
         for tipo, cuota in cuotas.items():
-
             if pd.isna(cuota):
                 continue
 
@@ -185,16 +160,14 @@ def analizar_jornada(nombre_liga, url):
             edge = p_mod - p_impl
 
             if edge >= EDGE_MINIMO:
-
                 logging.info(f"VALUE BET {home} vs {away} {tipo} edge {edge}")
-
                 apuestas_detectadas.append({
                     "liga": nombre_liga,
                     "local": home,
                     "visitante": away,
                     "tipo": tipo,
                     "cuota": cuota,
-                    "edge": edge,
+                    "edge": round(edge, 2),
                     "rating": x
                 })
 
@@ -205,37 +178,37 @@ def analizar_jornada(nombre_liga, url):
 # ============================
 
 def guardar_reportes(apuestas):
-
     if len(apuestas) == 0:
-
         logging.info("No se detectaron apuestas")
-
         return
 
     df = pd.DataFrame(apuestas)
 
-    archivo = f"reports/value_bets_{fecha}.csv"
-
+    # Nombre fijo para que streamlit_app.py siempre lo encuentre
+    archivo = os.path.join(REPORTS_DIR, "value_bets.csv")
     df.to_csv(archivo, index=False)
-
-    logging.info(f"Reporte guardado {archivo}")
+    logging.info(f"Reporte guardado en {archivo}")
 
 # ============================
-# BLOQUE PRINCIPAL
+# FUNCION PRINCIPAL (llamable desde streamlit)
 # ============================
 
-if __name__ == "__main__":
-
+def run():
     ligas = cargar_ligas()
-
     todas_apuestas = []
 
-    for nombre,datos in ligas.items():
-
+    for nombre, datos in ligas.items():
         apuestas = analizar_jornada(nombre, datos["url"])
-
         todas_apuestas.extend(apuestas)
 
     guardar_reportes(todas_apuestas)
-
     logging.info("Analisis finalizado")
+
+    return todas_apuestas  # Devuelve los datos para que streamlit los muestre
+
+# ============================
+# EJECUCION DIRECTA (opcional)
+# ============================
+
+if __name__ == "__main__":
+    run()
