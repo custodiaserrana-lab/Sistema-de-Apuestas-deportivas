@@ -4,6 +4,7 @@ import requests
 from io import StringIO
 import os
 import logging
+import yaml
 from datetime import datetime
 from bs4 import BeautifulSoup
 
@@ -14,6 +15,7 @@ from bs4 import BeautifulSoup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
 REPORTS_DIR = os.path.join(BASE_DIR, "reports")
+CONFIG_DIR = os.path.join(BASE_DIR, "config")
 
 os.makedirs(LOGS_DIR, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
@@ -37,6 +39,24 @@ logging.basicConfig(
 )
 
 logging.info("Inicio del sistema Futbol 2026")
+
+# ===============================
+# CARGAR LIGAS DESDE YAML
+# ===============================
+
+def cargar_ligas():
+    try:
+        ruta = os.path.join(CONFIG_DIR, "ligas.yaml")
+        with open(ruta, "r") as f:
+            config = yaml.safe_load(f)
+        return config["ligas"]
+    except Exception as e:
+        logging.error(f"No se pudo cargar ligas.yaml: {e}")
+        # Fallback si falla el YAML
+        return {
+            "Inglaterra Premier": {"url": "https://www.football-data.co.uk/mmz4281/2526/E0.csv"},
+            "Argentina": {"url": "https://www.football-data.co.uk/new/ARG.csv"}
+        }
 
 # ===============================
 # MOTOR MATEMATICO
@@ -69,6 +89,13 @@ def ejecutar_backtesting(url_csv, nombre_liga):
         df = pd.read_csv(StringIO(response.text))
     except Exception as e:
         logging.error(f"Error descargando {url_csv}: {e}")
+        return {'apuestas': 0, 'p_l': 0}, 0, []
+
+    # Verificar columnas necesarias antes de procesar
+    columnas_requeridas = ['FTR', 'PSH', 'PSD', 'PSA', 'FTHG', 'FTAG', 'HomeTeam', 'AwayTeam', 'Date']
+    faltantes = [c for c in columnas_requeridas if c not in df.columns]
+    if faltantes:
+        logging.warning(f"{nombre_liga}: columnas faltantes {faltantes} — se omite esta liga")
         return {'apuestas': 0, 'p_l': 0}, 0, []
 
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)
@@ -159,28 +186,28 @@ def guardar_roi(fecha, liga, apuestas, yield_neto):
 # FUNCION PRINCIPAL (llamable desde Streamlit)
 # ===============================
 
-LIGAS = {
-    "Inglaterra Premier": "https://www.football-data.co.uk/mmz4281/2425/E0.csv",
-    "Argentina Primera": "https://www.football-data.co.uk/new/ARG.csv"
-}
-
 def run():
+    ligas = cargar_ligas()
     todas_apuestas = []
     resumen = []
 
-    for nombre, url in LIGAS.items():
+    for nombre, datos in ligas.items():
+        url = datos["url"]
         stats, yield_neto, apuestas = ejecutar_backtesting(url, nombre)
-        guardar_roi(fecha, nombre, stats['apuestas'], yield_neto)
+
+        if stats['apuestas'] > 0:
+            guardar_roi(fecha, nombre, stats['apuestas'], yield_neto)
+
         todas_apuestas.extend(apuestas)
         resumen.append({
             "liga": nombre,
             "apuestas": stats['apuestas'],
-            "yield": round(yield_neto, 2)
+            "yield %": round(yield_neto, 2),
+            "P&L unidades": round(stats['p_l'], 2)
         })
 
     guardar_reportes(todas_apuestas)
     logging.info("Ejecucion finalizada")
-
     return todas_apuestas, resumen
 
 if __name__ == "__main__":
