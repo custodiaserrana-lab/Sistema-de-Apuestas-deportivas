@@ -19,9 +19,9 @@ jobs:
         with:
           python-version: "3.9"
 
-      - name: Instalar librerias
+      - name: Instalar dependencias
         run: |
-          pip install pandas numpy requests
+          pip install -r requirements.txt
 
       - name: Ejecutar sistema de analisis
         run: python main.py
