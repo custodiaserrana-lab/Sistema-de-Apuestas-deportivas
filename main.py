@@ -263,8 +263,18 @@ def detectar_value_bets(odds_key):
             try:
                 dt = datetime.strptime(partido["commence_time"], "%Y-%m-%dT%H:%M:%SZ")
                 dt = dt.replace(tzinfo=timezone.utc)
-                minutos = int((dt - datetime.now(timezone.utc)).total_seconds() / 60)
-                hora_str = dt.strftime("%H:%M UTC")
+                ahora_utc = datetime.now(timezone.utc)
+                minutos = int((dt - ahora_utc).total_seconds() / 60)
+
+                # Fecha completa: si es hoy muestra "Hoy", si es mañana muestra "Mañana"
+                if dt.date() == ahora_utc.date():
+                    dia_str = "Hoy"
+                elif dt.date() == (ahora_utc + timedelta(days=1)).date():
+                    dia_str = "Mañana"
+                else:
+                    dia_str = dt.strftime("%d/%m")
+
+                hora_str = f"{dia_str} {dt.strftime('%H:%M')} UTC"
             except Exception:
                 minutos = 999
                 hora_str = "?"
@@ -326,9 +336,18 @@ def formatear_mensaje(apuestas):
 
         stats_aviso = "" if a["stats"] else " ⚠️"
 
+        # Texto de tiempo restante
+        if minutos < 60:
+            tiempo_str = f"{minutos} min"
+        elif minutos < 120:
+            tiempo_str = f"1h {minutos % 60}min"
+        else:
+            horas_r = minutos // 60
+            tiempo_str = f"{horas_r}h {minutos % 60}min"
+
         lineas += [
             f"*{i}. {a['liga']}*",
-            f"{urgencia} {a['hora']} — en {a['minutos']} min",
+            f"{urgencia} {a['hora']} — faltan {tiempo_str}",
             f"{tipo_emoji} {a['local']} vs {a['visitante']}",
             f"💰 *{a['apuesta']}* | Cuota: `{a['cuota']}` | Edge: `{a['edge']}%`{stats_aviso}",
             f"",
