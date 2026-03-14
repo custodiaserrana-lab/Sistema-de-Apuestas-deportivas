@@ -337,13 +337,14 @@ def formatear_mensaje(apuestas):
         stats_aviso = "" if a["stats"] else " ⚠️"
 
         # Texto de tiempo restante
-        if minutos < 60:
-            tiempo_str = f"{minutos} min"
-        elif minutos < 120:
-            tiempo_str = f"1h {minutos % 60}min"
+        m = a["minutos"]
+        if m < 60:
+            tiempo_str = f"{m} min"
+        elif m < 120:
+            tiempo_str = f"1h {m % 60}min"
         else:
-            horas_r = minutos // 60
-            tiempo_str = f"{horas_r}h {minutos % 60}min"
+            horas_r = m // 60
+            tiempo_str = f"{horas_r}h {m % 60}min"
 
         lineas += [
             f"*{i}. {a['liga']}*",
