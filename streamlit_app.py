@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
@@ -106,9 +106,7 @@ st.markdown("# ⚽ Futbol Quant Bot")
 st.markdown("**Sistema de análisis cuantitativo con detección de Value Bets**")
 
 # FIX: mostrar hora actual Argentina en el header
-hora_arg = datetime.utcnow()
-from datetime import timedelta
-hora_arg_local = hora_arg - timedelta(hours=3)
+hora_arg_local = datetime.now(timezone.utc) - timedelta(hours=3)
 st.markdown(
     f"<div class='timestamp-box'>🕐 Hora Argentina: <b>{hora_arg_local.strftime('%d/%m/%Y %H:%M')}</b> (GMT-3)</div>",
     unsafe_allow_html=True
@@ -387,7 +385,7 @@ with tab3:
         )
     with col_h2:
         st.markdown("<br>", unsafe_allow_html=True)
-        ahora_arg = datetime.utcnow() - timedelta(hours=3)
+        ahora_arg = datetime.now(timezone.utc) - timedelta(hours=3)
         hasta_arg = ahora_arg + timedelta(hours=horas_ventana)
         st.markdown(
             f"<div class='info-box'>📅 Buscando desde <b>{ahora_arg.strftime('%d/%m %H:%M')}</b> "
