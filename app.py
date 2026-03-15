@@ -52,7 +52,6 @@ def cargar_ligas():
         return config["ligas"]
     except Exception as e:
         logging.error(f"No se pudo cargar ligas.yaml: {e}")
-        # Fallback si falla el YAML
         return {
             "Inglaterra Premier": {"url": "https://www.football-data.co.uk/mmz4281/2526/E0.csv"},
             "Argentina": {"url": "https://www.football-data.co.uk/new/ARG.csv"}
@@ -79,6 +78,8 @@ def calcular_superioridad(historial_goles_h, historial_goles_a):
 
 # ===============================
 # BACKTESTING
+# FIX: Separa datos históricos (para ratings) de partidos futuros (para detección).
+# Solo analiza partidos con Date >= hoy que aún no tienen resultado.
 # ===============================
 
 def ejecutar_backtesting(url_csv, nombre_liga):
@@ -91,53 +92,61 @@ def ejecutar_backtesting(url_csv, nombre_liga):
         logging.error(f"Error descargando {url_csv}: {e}")
         return {'apuestas': 0, 'p_l': 0}, 0, []
 
-    # Verificar columnas necesarias antes de procesar
     columnas_requeridas = ['FTR', 'PSH', 'PSD', 'PSA', 'FTHG', 'FTAG', 'HomeTeam', 'AwayTeam', 'Date']
     faltantes = [c for c in columnas_requeridas if c not in df.columns]
     if faltantes:
         logging.warning(f"{nombre_liga}: columnas faltantes {faltantes} — se omite esta liga")
         return {'apuestas': 0, 'p_l': 0}, 0, []
 
-    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)
-    df = df.dropna(subset=['FTR', 'PSH', 'PSD', 'PSA', 'FTHG', 'FTAG'])
+    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['Date'])
 
+    # FIX: Separar partidos históricos (con resultado) de futuros (sin resultado)
+    hoy = pd.Timestamp.now().normalize()
+    df_historico = df[df['Date'] < hoy].dropna(subset=['FTR', 'PSH', 'PSD', 'PSA', 'FTHG', 'FTAG'])
+    df_futuro = df[df['Date'] >= hoy]
+
+    logging.info(f"{nombre_liga}: {len(df_historico)} partidos históricos | {len(df_futuro)} partidos futuros/hoy")
+
+    # Construir ratings usando solo el historial
     equipos_goles = {}
-    stats = {'apuestas': 0, 'p_l': 0}
-    apuestas_detectadas = []
-
-    for _, fila in df.iterrows():
+    for _, fila in df_historico.iterrows():
         h = fila['HomeTeam']
         a = fila['AwayTeam']
-
         if h not in equipos_goles:
             equipos_goles[h] = []
         if a not in equipos_goles:
             equipos_goles[a] = []
+        equipos_goles[h].append(fila['FTHG'] - fila['FTAG'])
+        equipos_goles[a].append(fila['FTAG'] - fila['FTHG'])
 
-        if len(equipos_goles[h]) >= 6 and len(equipos_goles[a]) >= 6:
+    # También ejecutar backtesting clásico sobre histórico para yield/ROI
+    stats = {'apuestas': 0, 'p_l': 0}
+    apuestas_historicas = []
+
+    for _, fila in df_historico.iterrows():
+        h = fila['HomeTeam']
+        a = fila['AwayTeam']
+        if len(equipos_goles.get(h, [])) >= 6 and len(equipos_goles.get(a, [])) >= 6:
             x = calcular_superioridad(equipos_goles[h], equipos_goles[a])
             p_mod_L, p_mod_E, p_mod_V = motor_probabilidades(x)
-
             cuotas = [
                 ('H', p_mod_L, fila['PSH']),
                 ('D', p_mod_E, fila['PSD']),
                 ('A', p_mod_V, fila['PSA'])
             ]
-
             for tipo, p_m, cuota in cuotas:
                 edge = p_m - (100 / cuota)
-
                 if edge >= EDGE_MINIMO:
                     stats['apuestas'] += 1
                     ganada = (fila['FTR'] == tipo)
-
                     if ganada:
                         stats['p_l'] += (2 * (cuota - 1))
                     else:
                         stats['p_l'] -= 2
-
-                    apuestas_detectadas.append({
+                    apuestas_historicas.append({
                         "liga": nombre_liga,
+                        "fecha": fila['Date'].strftime("%Y-%m-%d"),
                         "local": h,
                         "visitante": a,
                         "tipo": tipo,
@@ -147,27 +156,74 @@ def ejecutar_backtesting(url_csv, nombre_liga):
                         "resultado": "✅" if ganada else "❌"
                     })
 
-        equipos_goles[h].append(fila['FTHG'] - fila['FTAG'])
-        equipos_goles[a].append(fila['FTAG'] - fila['FTHG'])
+    # FIX: Detectar value bets en partidos FUTUROS usando ratings ya construidos
+    apuestas_futuras = []
+    for _, fila in df_futuro.iterrows():
+        h = fila['HomeTeam']
+        a = fila['AwayTeam']
+
+        # Necesitamos cuotas en el CSV futuro — si no las hay, saltar
+        tiene_cuotas = all(c in fila and pd.notna(fila[c]) for c in ['PSH', 'PSD', 'PSA'])
+        if not tiene_cuotas:
+            continue
+
+        if len(equipos_goles.get(h, [])) >= 6 and len(equipos_goles.get(a, [])) >= 6:
+            x = calcular_superioridad(equipos_goles[h], equipos_goles[a])
+            p_mod_L, p_mod_E, p_mod_V = motor_probabilidades(x)
+            cuotas = [
+                ('H', p_mod_L, fila['PSH']),
+                ('D', p_mod_E, fila['PSD']),
+                ('A', p_mod_V, fila['PSA'])
+            ]
+            for tipo, p_m, cuota in cuotas:
+                if cuota <= 1.0:
+                    continue
+                edge = p_m - (100 / cuota)
+                if edge >= EDGE_MINIMO:
+                    apuestas_futuras.append({
+                        "liga": nombre_liga,
+                        "fecha": fila['Date'].strftime("%Y-%m-%d"),
+                        "local": h,
+                        "visitante": a,
+                        "tipo": tipo,
+                        "cuota": round(cuota, 2),
+                        "prob_modelo": round(p_m, 2),
+                        "edge": round(edge, 2),
+                        "resultado": "⏳ pendiente"
+                    })
 
     yield_neto = 0
     if stats['apuestas'] > 0:
         yield_neto = (stats['p_l'] / (stats['apuestas'] * 2)) * 100
 
-    logging.info(f"{nombre_liga} | apuestas={stats['apuestas']} | yield={yield_neto:.2f}")
-    return stats, yield_neto, apuestas_detectadas
+    logging.info(f"{nombre_liga} | apuestas_hist={stats['apuestas']} | yield={yield_neto:.2f} | futuras={len(apuestas_futuras)}")
+    return stats, yield_neto, apuestas_historicas, apuestas_futuras
 
 # ===============================
 # GUARDAR REPORTES
+# FIX: CSVs separados para histórico y value bets futuras
 # ===============================
 
-def guardar_reportes(resultados):
+def guardar_reportes_historicos(resultados):
+    """Guarda el detalle del backtesting histórico — NO sobreescribe value_bets.csv"""
     if not resultados:
         return
     df = pd.DataFrame(resultados)
+    df["generado_en"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    ruta = os.path.join(REPORTS_DIR, "backtest_historico.csv")
+    df.to_csv(ruta, index=False)
+    logging.info(f"Reporte histórico guardado: {ruta}")
+
+def guardar_value_bets_futuras(resultados):
+    """Guarda value bets de partidos futuros detectados desde football-data"""
+    if not resultados:
+        return
+    df = pd.DataFrame(resultados)
+    df["generado_en"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    df["fuente"] = "football-data (cuotas en CSV)"
     ruta = os.path.join(REPORTS_DIR, "value_bets.csv")
     df.to_csv(ruta, index=False)
-    logging.info(f"Reporte guardado: {ruta}")
+    logging.info(f"Value bets futuras guardadas: {ruta}")
 
 def guardar_roi(fecha, liga, apuestas, yield_neto):
     archivo = os.path.join(REPORTS_DIR, "roi_historial.csv")
@@ -183,32 +239,40 @@ def guardar_roi(fecha, liga, apuestas, yield_neto):
         fila.to_csv(archivo, index=False)
 
 # ===============================
-# FUNCION PRINCIPAL (llamable desde Streamlit)
+# FUNCION PRINCIPAL
 # ===============================
 
 def run():
     ligas = cargar_ligas()
-    todas_apuestas = []
+    todas_apuestas_hist = []
+    todas_apuestas_futuras = []
     resumen = []
 
     for nombre, datos in ligas.items():
         url = datos["url"]
-        stats, yield_neto, apuestas = ejecutar_backtesting(url, nombre)
+        stats, yield_neto, apuestas_hist, apuestas_futuras = ejecutar_backtesting(url, nombre)
 
         if stats['apuestas'] > 0:
             guardar_roi(fecha, nombre, stats['apuestas'], yield_neto)
 
-        todas_apuestas.extend(apuestas)
+        todas_apuestas_hist.extend(apuestas_hist)
+        todas_apuestas_futuras.extend(apuestas_futuras)
+
         resumen.append({
             "liga": nombre,
-            "apuestas": stats['apuestas'],
+            "apuestas_hist": stats['apuestas'],
+            "value_bets_futuras": len(apuestas_futuras),
             "yield %": round(yield_neto, 2),
             "P&L unidades": round(stats['p_l'], 2)
         })
 
-    guardar_reportes(todas_apuestas)
+    # FIX: guardar en CSVs separados
+    guardar_reportes_historicos(todas_apuestas_hist)
+    guardar_value_bets_futuras(todas_apuestas_futuras)
+
     logging.info("Ejecucion finalizada")
-    return todas_apuestas, resumen
+    # Devolver históricas para mostrar en backtesting, y el resumen
+    return todas_apuestas_hist, resumen
 
 if __name__ == "__main__":
     run()
