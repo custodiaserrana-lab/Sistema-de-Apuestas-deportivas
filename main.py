@@ -36,10 +36,6 @@ logging.basicConfig(
 # API KEY — The Odds API
 # ===============================
 
-# La API key se lee desde variable de entorno para no exponerla en el código.
-# En Streamlit Cloud: Settings → Secrets → agregar ODDS_API_KEY = "tu_token"
-# Localmente: crear archivo .env o setear la variable de entorno
-
 import streamlit as st
 
 def get_api_key():
@@ -52,7 +48,6 @@ def get_api_key():
 # LIGAS — mapeo football-data ↔ The Odds API
 # ===============================
 
-# The Odds API usa sus propios sport_keys para identificar ligas
 LIGAS_ODDS_API = {
     "Premier_League":  "soccer_epl",
     "La_Liga":         "soccer_spain_la_liga",
@@ -66,7 +61,6 @@ LIGAS_ODDS_API = {
     "MLS":             "soccer_usa_mls",
 }
 
-# URLs football-data para estadísticas históricas (ratings)
 LIGAS_STATS = {
     "Premier_League": "https://www.football-data.co.uk/mmz4281/2526/E0.csv",
     "La_Liga":        "https://www.football-data.co.uk/mmz4281/2526/SP1.csv",
@@ -96,9 +90,9 @@ def motor_probabilidades(x):
 
 def calcular_ratings_liga(url_csv):
     """
-    Descarga el CSV histórico y calcula el rating (diferencia goles)
-    de cada equipo en sus últimos 6 partidos jugados.
-    Devuelve un dict: { nombre_equipo: rating }
+    Descarga el CSV histórico y calcula el rating de cada equipo
+    en sus últimos 6 partidos jugados.
+    Solo usa partidos con resultado confirmado (FTR no nulo).
     """
     try:
         response = requests.get(url_csv, timeout=10)
@@ -111,7 +105,7 @@ def calcular_ratings_liga(url_csv):
     if any(c not in df.columns for c in columnas_requeridas):
         return {}
 
-    # Solo partidos ya jugados
+    # FIX: Solo partidos ya jugados con resultado confirmado
     df = df.dropna(subset=['FTR', 'FTHG', 'FTAG'])
 
     equipos_historial = {}
@@ -131,19 +125,21 @@ def calcular_ratings_liga(url_csv):
     ratings = {}
     for equipo, historial in equipos_historial.items():
         ultimos_6 = historial[-6:]
-        if len(ultimos_6) >= 3:  # Mínimo 3 partidos para calcular
+        if len(ultimos_6) >= 3:
             ratings[equipo] = sum(ultimos_6)
 
+    logging.info(f"Ratings calculados para {len(ratings)} equipos")
     return ratings
 
 # ===============================
 # OBTENER PARTIDOS PROXIMOS — The Odds API
+# FIX: ventana configurable (default 48h en lugar de 6h)
 # ===============================
 
-def obtener_partidos_con_cuotas(sport_key, api_key, horas=6):
+def obtener_partidos_con_cuotas(sport_key, api_key, horas=48):
     """
-    Consulta The Odds API y devuelve partidos de las próximas N horas
-    con cuotas de Pinnacle (bookmaker preferido por el modelo).
+    Consulta The Odds API y devuelve partidos de las próximas N horas.
+    FIX: Default cambiado a 48 horas para cubrir jornada completa.
     """
     ahora = datetime.now(timezone.utc)
     hasta = ahora + timedelta(hours=horas)
@@ -151,8 +147,8 @@ def obtener_partidos_con_cuotas(sport_key, api_key, horas=6):
     url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
     params = {
         "apiKey": api_key,
-        "regions": "eu",             # Cuotas europeas (incluye Pinnacle)
-        "markets": "h2h",            # Mercado 1X2
+        "regions": "eu",
+        "markets": "h2h",
         "oddsFormat": "decimal",
         "commenceTimeFrom": ahora.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "commenceTimeTo":   hasta.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -171,7 +167,7 @@ def obtener_partidos_con_cuotas(sport_key, api_key, horas=6):
             return []
 
         partidos = response.json()
-        logging.info(f"{sport_key}: {len(partidos)} partidos encontrados en próximas {horas}h")
+        logging.info(f"{sport_key}: {len(partidos)} partidos en próximas {horas}h")
         return partidos
 
     except Exception as e:
@@ -183,16 +179,10 @@ def obtener_partidos_con_cuotas(sport_key, api_key, horas=6):
 # ===============================
 
 def extraer_cuotas_pinnacle(partido):
-    """
-    Extrae las cuotas de Pinnacle del objeto partido.
-    Si no hay Pinnacle, usa el promedio de los bookmakers disponibles.
-    Devuelve (cuota_home, cuota_draw, cuota_away) o None si no hay datos.
-    """
     bookmakers = partido.get("bookmakers", [])
     if not bookmakers:
         return None
 
-    # Priorizar Pinnacle
     preferidos = ["pinnacle", "betfair_ex_eu", "sport888", "williamhill"]
     mercado = None
 
@@ -208,7 +198,6 @@ def extraer_cuotas_pinnacle(partido):
         if mercado:
             break
 
-    # Si no hay preferido, usar el primero disponible
     if not mercado:
         for bk in bookmakers:
             for m in bk.get("markets", []):
@@ -222,7 +211,6 @@ def extraer_cuotas_pinnacle(partido):
         return None
 
     outcomes = {o["name"]: o["price"] for o in mercado.get("outcomes", [])}
-
     home_team = partido["home_team"]
     away_team = partido["away_team"]
 
@@ -240,10 +228,6 @@ def extraer_cuotas_pinnacle(partido):
 # ===============================
 
 def normalizar_nombre(nombre):
-    """
-    Limpia y normaliza nombres de equipos para comparar
-    entre The Odds API y football-data.co.uk
-    """
     reemplazos = {
         "FC": "", "CF": "", "AC": "", "SC": "", "AS": "",
         "United": "Utd", "Athletic Club": "Athletic Bilbao",
@@ -256,40 +240,32 @@ def normalizar_nombre(nombre):
     return nombre.strip().lower()
 
 def buscar_rating(nombre_odds_api, ratings_dict):
-    """
-    Busca el rating de un equipo haciendo matching flexible de nombres.
-    """
     nombre_norm = normalizar_nombre(nombre_odds_api)
-
     for equipo_csv, rating in ratings_dict.items():
         if normalizar_nombre(equipo_csv) == nombre_norm:
             return rating
-
-    # Matching parcial si no hay exacto
     for equipo_csv, rating in ratings_dict.items():
         if nombre_norm in normalizar_nombre(equipo_csv) or \
            normalizar_nombre(equipo_csv) in nombre_norm:
             return rating
-
     return None
 
 # ===============================
 # ANALIZAR UNA LIGA
 # ===============================
 
-def analizar_liga(nombre_liga, sport_key, url_stats, api_key, horas=6):
+def analizar_liga(nombre_liga, sport_key, url_stats, api_key, horas=48):
     """
     Combina cuotas en tiempo real (The Odds API) con ratings históricos
-    (football-data) para detectar value bets en los próximos partidos.
+    para detectar value bets en los próximos partidos.
+    FIX: ventana default 48h, hora local Argentina incluida en resultado.
     """
     logging.info(f"Analizando {nombre_liga}...")
 
-    # 1. Obtener partidos próximos con cuotas
     partidos = obtener_partidos_con_cuotas(sport_key, api_key, horas)
     if not partidos:
         return []
 
-    # 2. Calcular ratings históricos
     ratings = calcular_ratings_liga(url_stats)
     if not ratings:
         logging.warning(f"{nombre_liga}: no se pudieron calcular ratings históricos")
@@ -301,26 +277,28 @@ def analizar_liga(nombre_liga, sport_key, url_stats, api_key, horas=6):
         away = partido["away_team"]
         commence = partido.get("commence_time", "")
 
-        # Convertir hora UTC a legible
+        # FIX: Mostrar hora en UTC y en Argentina (GMT-3)
         try:
-            dt = datetime.strptime(commence, "%Y-%m-%dT%H:%M:%SZ")
-            dt = dt.replace(tzinfo=timezone.utc)
-            hora_local = dt.strftime("%d/%m %H:%M UTC")
+            dt_utc = datetime.strptime(commence, "%Y-%m-%dT%H:%M:%SZ")
+            dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+            dt_arg = dt_utc - timedelta(hours=3)
+            hora_utc = dt_utc.strftime("%d/%m %H:%M UTC")
+            hora_arg = dt_arg.strftime("%d/%m %H:%M ARG")
+            fecha_partido = dt_arg.strftime("%Y-%m-%d")
         except Exception:
-            hora_local = commence
+            hora_utc = commence
+            hora_arg = commence
+            fecha_partido = fecha
 
-        # Extraer cuotas
         cuotas = extraer_cuotas_pinnacle(partido)
         if not cuotas:
             continue
 
         cuota_h, cuota_d, cuota_a = cuotas
 
-        # Buscar ratings
         rating_h = buscar_rating(home, ratings)
         rating_a = buscar_rating(away, ratings)
 
-        # Si no hay ratings, usar 0 (modelo sin ventaja histórica)
         r_h = rating_h if rating_h is not None else 0
         r_a = rating_a if rating_a is not None else 0
         tiene_stats = rating_h is not None and rating_a is not None
@@ -344,7 +322,9 @@ def analizar_liga(nombre_liga, sport_key, url_stats, api_key, horas=6):
             if edge >= EDGE_MINIMO:
                 apuestas.append({
                     "liga":        nombre_liga,
-                    "hora":        hora_local,
+                    "fecha":       fecha_partido,
+                    "hora_arg":    hora_arg,      # FIX: hora Argentina
+                    "hora_utc":    hora_utc,
                     "local":       home,
                     "visitante":   away,
                     "tipo":        tipo,
@@ -361,21 +341,26 @@ def analizar_liga(nombre_liga, sport_key, url_stats, api_key, horas=6):
 
 # ===============================
 # GUARDAR REPORTE
+# FIX: incluye timestamp de generación y ventana temporal usada
 # ===============================
 
-def guardar_reporte(apuestas):
+def guardar_reporte(apuestas, horas):
     if not apuestas:
         return
     df = pd.DataFrame(apuestas)
+    # FIX: agregar metadata de cuándo y para qué ventana se generó
+    df["generado_en"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    df["ventana_horas"] = horas
     ruta = os.path.join(REPORTS_DIR, "value_bets.csv")
     df.to_csv(ruta, index=False)
-    logging.info(f"Reporte guardado: {ruta}")
+    logging.info(f"Reporte guardado: {ruta} | {len(apuestas)} apuestas | ventana {horas}h")
 
 # ===============================
 # FUNCION PRINCIPAL
+# FIX: horas=48 por defecto (antes era 6)
 # ===============================
 
-def run(horas=6):
+def run(horas=48):
     api_key = get_api_key()
     if not api_key:
         raise ValueError("No se encontró ODDS_API_KEY. Configurala en Streamlit Secrets.")
@@ -387,11 +372,11 @@ def run(horas=6):
         apuestas = analizar_liga(nombre, sport_key, url_stats, api_key, horas)
         todas_apuestas.extend(apuestas)
 
-    guardar_reporte(todas_apuestas)
+    guardar_reporte(todas_apuestas, horas)
     logging.info(f"Total value bets detectadas: {len(todas_apuestas)}")
     return todas_apuestas
 
 if __name__ == "__main__":
-    resultados = run(horas=6)
+    resultados = run(horas=48)
     for r in resultados:
         print(r)
