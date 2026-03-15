@@ -99,6 +99,32 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ===============================
+# SESSION STATE — persiste reportes en memoria durante la sesión
+# Necesario porque Streamlit Cloud no persiste archivos en disco
+# ===============================
+
+if "df_value_bets" not in st.session_state:
+    st.session_state.df_value_bets = None
+if "df_backtest" not in st.session_state:
+    st.session_state.df_backtest = None
+if "df_resumen_backtest" not in st.session_state:
+    st.session_state.df_resumen_backtest = None
+
+# Intentar cargar desde disco si existe (primera carga o deploy nuevo)
+csv_vb = os.path.join(BASE_DIR, "reports", "value_bets.csv")
+csv_bt = os.path.join(BASE_DIR, "reports", "backtest_historico.csv")
+if st.session_state.df_value_bets is None and os.path.exists(csv_vb):
+    try:
+        st.session_state.df_value_bets = pd.read_csv(csv_vb)
+    except Exception:
+        pass
+if st.session_state.df_backtest is None and os.path.exists(csv_bt):
+    try:
+        st.session_state.df_backtest = pd.read_csv(csv_bt)
+    except Exception:
+        pass
+
+# ===============================
 # HEADER
 # ===============================
 
@@ -215,11 +241,10 @@ with tab1:
     with col_c:
         excluir_empates = st.checkbox("Excluir empates (tipo D)", value=False)
 
-    # FIX: leer value_bets.csv (generado por main.py = partidos FUTUROS con The Odds API)
-    csv_path = os.path.join(BASE_DIR, "reports", "value_bets.csv")
+    # FIX: leer de session_state (persiste aunque el disco se borre)
+    df_raw = st.session_state.df_value_bets
 
-    if os.path.exists(csv_path):
-        df_raw = pd.read_csv(csv_path)
+    if df_raw is not None and not df_raw.empty:
 
         # FIX: mostrar contexto temporal del reporte antes del ranking
         if 'generado_en' in df_raw.columns:
@@ -314,15 +339,17 @@ with tab2:
 
     if st.button("▶️ Ejecutar backtesting", key="btn_backtest"):
         try:
-            import app
+            import aplicacion
             with st.spinner("Descargando datos y analizando ligas... esto puede tardar unos segundos"):
-                apuestas, resumen = app.run()
+                apuestas, resumen = aplicacion.run()
 
             if apuestas:
+                st.session_state.df_backtest = pd.DataFrame(apuestas)
+                st.session_state.df_resumen_backtest = pd.DataFrame(resumen)
                 st.success(f"✅ Completado — {len(apuestas)} apuestas históricas analizadas en {len(resumen)} ligas")
 
                 st.subheader("Resumen por liga")
-                df_resumen = pd.DataFrame(resumen)
+                df_resumen = st.session_state.df_resumen_backtest
 
                 def color_yield(val):
                     color = '#00d4aa' if val > 0 else '#ff6b4d'
@@ -334,7 +361,7 @@ with tab2:
                 )
 
                 st.subheader("Detalle completo de apuestas históricas")
-                st.dataframe(pd.DataFrame(apuestas), use_container_width=True)
+                st.dataframe(st.session_state.df_backtest, use_container_width=True)
 
                 st.markdown("<div class='warning-box'>⚠️ Argentina, Brasil y MLS pueden mostrar 0 apuestas por falta de cuotas Pinnacle en el dataset.</div>", unsafe_allow_html=True)
             else:
@@ -402,9 +429,9 @@ with tab3:
                 apuestas = main.run(horas=horas_ventana)
 
             if apuestas:
-                st.success(f"✅ {len(apuestas)} value bets detectadas para las próximas {horas_ventana}h")
                 df_result = pd.DataFrame(apuestas)
-                # Mostrar columnas más relevantes primero
+                st.session_state.df_value_bets = df_result  # FIX: guardar en session_state
+                st.success(f"✅ {len(apuestas)} value bets detectadas para las próximas {horas_ventana}h")
                 cols_order = ['liga', 'fecha', 'hora_arg', 'local', 'visitante', 'apuesta', 'cuota', 'prob_modelo', 'prob_impl', 'edge', 'con_stats']
                 cols_show = [c for c in cols_order if c in df_result.columns]
                 st.dataframe(df_result[cols_show], use_container_width=True)
@@ -424,12 +451,11 @@ with tab3:
                 2. En Streamlit Cloud: Settings → Secrets → agregar `ODDS_API_KEY = "tu_token"`
                 """)
 
-    # FIX: mostrar último reporte con contexto temporal claro
-    csv_path = os.path.join(BASE_DIR, "reports", "value_bets.csv")
-    if os.path.exists(csv_path):
+    # FIX: mostrar último reporte desde session_state (no depende del disco)
+    df_last = st.session_state.df_value_bets
+    if df_last is not None and not df_last.empty:
         st.divider()
         st.subheader("📋 Último reporte guardado")
-        df_last = pd.read_csv(csv_path)
 
         if 'generado_en' in df_last.columns:
             gen = df_last['generado_en'].iloc[0]
