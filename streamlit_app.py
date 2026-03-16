@@ -340,9 +340,9 @@ with tab2:
 
     if st.button("▶️ Ejecutar backtesting", key="btn_backtest"):
         try:
-            import aplicacion
+            import app
             with st.spinner("Descargando datos y analizando ligas... esto puede tardar unos segundos"):
-                apuestas, resumen = aplicacion.run()
+                apuestas, resumen = app.run()
 
             if apuestas:
                 st.session_state.df_backtest = pd.DataFrame(apuestas)
