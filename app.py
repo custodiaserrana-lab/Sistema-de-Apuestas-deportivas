@@ -196,8 +196,10 @@ def ejecutar_backtesting(url_csv, nombre_liga):
     if stats['apuestas'] > 0:
         yield_neto = (stats['p_l'] / (stats['apuestas'] * 2)) * 100
 
+    # Combinar históricas + futuras en una sola lista para el reporte
+    todas = apuestas_historicas + apuestas_futuras
     logging.info(f"{nombre_liga} | apuestas_hist={stats['apuestas']} | yield={yield_neto:.2f} | futuras={len(apuestas_futuras)}")
-    return stats, yield_neto, apuestas_historicas, apuestas_futuras
+    return stats, yield_neto, todas
 
 # ===============================
 # GUARDAR REPORTES
@@ -244,35 +246,30 @@ def guardar_roi(fecha, liga, apuestas, yield_neto):
 
 def run():
     ligas = cargar_ligas()
-    todas_apuestas_hist = []
-    todas_apuestas_futuras = []
+    todas_apuestas = []
     resumen = []
 
     for nombre, datos in ligas.items():
         url = datos["url"]
-        stats, yield_neto, apuestas_hist, apuestas_futuras = ejecutar_backtesting(url, nombre)
+        stats, yield_neto, apuestas = ejecutar_backtesting(url, nombre)
 
         if stats['apuestas'] > 0:
             guardar_roi(fecha, nombre, stats['apuestas'], yield_neto)
 
-        todas_apuestas_hist.extend(apuestas_hist)
-        todas_apuestas_futuras.extend(apuestas_futuras)
+        todas_apuestas.extend(apuestas)
 
         resumen.append({
             "liga": nombre,
-            "apuestas_hist": stats['apuestas'],
-            "value_bets_futuras": len(apuestas_futuras),
+            "apuestas": stats['apuestas'],
             "yield %": round(yield_neto, 2),
             "P&L unidades": round(stats['p_l'], 2)
         })
 
-    # FIX: guardar en CSVs separados
-    guardar_reportes_historicos(todas_apuestas_hist)
-    guardar_value_bets_futuras(todas_apuestas_futuras)
+    guardar_reportes_historicos(todas_apuestas)
+    guardar_value_bets_futuras(todas_apuestas)
 
     logging.info("Ejecucion finalizada")
-    # Devolver históricas para mostrar en backtesting, y el resumen
-    return todas_apuestas_hist, resumen
+    return todas_apuestas, resumen
 
 if __name__ == "__main__":
     run()
