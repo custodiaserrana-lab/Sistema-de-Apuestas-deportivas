@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinBot AR — TPO Market Profile</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@700;800&display=swap');
+:root{
+  --bg:#05050f;--s1:#0a0a1a;--s2:#0f0f22;--br:#1a1a30;
+  --tx:#e0e0f0;--mu:#4a4a6a;
+  --grn:#00e676;--red:#ff3d3d;--gold:#ffb300;--pur:#7c4dff;--blu:#2979ff;--teal:#00bcd4;
+  --poc:#ff6b35;--vah:#00e676;--val:#ff4444;--poor:#ff00ff;--single:#00ffff;
+  --mono:'JetBrains Mono',monospace;--head:'Syne',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--tx);font-family:var(--mono);overflow-x:hidden}
+.hdr{background:linear-gradient(135deg,#05050f,#0d0d25);border-bottom:1px solid var(--br);
+  padding:12px 20px;display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:200;backdrop-filter:blur(12px)}
+.logo{font-family:var(--head);font-size:1rem;font-weight:800}
+.logo span{color:var(--poc)}
+.badge{font-size:.48rem;padding:2px 7px;border-radius:4px;font-weight:700;letter-spacing:.06em}
+.hdr-right{display:flex;gap:8px;align-items:center}
+.hbtn{font-size:.58rem;padding:5px 11px;background:var(--s2);border:1px solid var(--br);
+  border-radius:6px;color:var(--tx);cursor:pointer;text-decoration:none;transition:all .2s;font-family:var(--mono)}
+.hbtn:hover{border-color:var(--poc);color:var(--poc)}
+.layout{display:grid;grid-template-columns:255px 1fr 295px;height:calc(100vh - 52px);overflow:hidden}
+.panel-left,.panel-right{overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--br) transparent}
+.panel-left{background:var(--s1);border-right:1px solid var(--br)}
+.panel-right{background:var(--s1);border-left:1px solid var(--br)}
+.panel-center{overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--br) transparent}
+.psect{padding:12px 14px;border-bottom:1px solid var(--br)}
+.ptitle{font-family:var(--head);font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mu);margin-bottom:8px}
+.ai{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;
+  border-radius:7px;cursor:pointer;margin-bottom:4px;border:1px solid transparent;transition:all .2s}
+.ai:hover{background:var(--s2);border-color:var(--br)}
+.ai.active{background:var(--poc)15;border-color:var(--poc)50}
+.asym{font-weight:700;font-size:.72rem}
+.aname{font-size:.5rem;color:var(--mu)}
+.abadge{font-size:.45rem;padding:2px 5px;border-radius:3px;font-weight:700}
+.tpo-sect{padding:14px}
+.tpoctrl{display:flex;gap:6px;flex-wrap:wrap}
+.tbtn{font-size:.55rem;padding:4px 10px;background:var(--s2);border:1px solid var(--br);
+  border-radius:5px;color:var(--mu);cursor:pointer;transition:all .2s;font-family:var(--mono)}
+.tbtn.active{background:var(--poc)20;border-color:var(--poc);color:var(--poc)}
+.lgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.lcard{background:var(--s1);border-radius:9px;padding:10px 12px;border:1px solid var(--br);position:relative;overflow:hidden}
+.lcard::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%}
+.lcard.cpoc::before{background:var(--poc)}
+.lcard.cvah::before{background:var(--vah)}
+.lcard.cval::before{background:var(--val)}
+.lcard.cph::before,.lcard.cpl::before{background:var(--poor)}
+.lcard.csp::before{background:var(--single)}
+.llabel{font-size:.48rem;text-transform:uppercase;letter-spacing:.07em;color:var(--mu);margin-bottom:2px}
+.lprice{font-family:var(--head);font-size:.9rem;font-weight:700;margin-bottom:2px}
+.lsub{font-size:.48rem;color:var(--mu);line-height:1.4}
+.lstatus{font-size:.46rem;padding:2px 6px;border-radius:3px;font-weight:700;margin-top:4px;display:inline-block}
+.pwrap{background:var(--s1);border:1px solid var(--br);border-radius:10px;padding:12px;margin-bottom:14px}
+.ri{display:flex;align-items:center;gap:9px;padding:8px 11px;background:var(--s2);
+  border-radius:7px;margin-bottom:5px;border:1px solid var(--br);transition:all .3s}
+.ri.fired{border-color:var(--gold);background:var(--gold)08;animation:flsh .5s}
+@keyframes flsh{0%,100%{opacity:1}50%{opacity:.6}}
+.rdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.rpulse{animation:rp 1.5s infinite}
+@keyframes rp{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+.rtog{width:30px;height:17px;background:#2a2a45;border-radius:9px;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;border:none}
+.rtog.on{background:var(--grn)60}
+.rtog::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;background:var(--tx);border-radius:50%;transition:left .2s}
+.rtog.on::after{left:15px}
+.alrt{margin:7px 9px;padding:9px 11px;border-radius:7px;background:var(--s2);
+  border:1px solid var(--br);border-left:3px solid var(--mu);animation:sli .3s}
+@keyframes sli{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.alrt.critical{border-left-color:var(--red)}
+.alrt.warning{border-left-color:var(--gold)}
+.alrt.info{border-left-color:var(--blu)}
+.alrt.buy{border-left-color:var(--grn)}
+.atime{font-size:.46rem;color:var(--mu);margin-bottom:2px}
+.atitle{font-size:.62rem;font-weight:700;margin-bottom:3px}
+.abody{font-size:.55rem;color:var(--mu);line-height:1.6}
+.aact{font-size:.5rem;padding:3px 8px;border-radius:5px;margin-top:5px;display:inline-block;
+  font-weight:700;background:var(--s1);border:1px solid var(--br);color:var(--tx)}
+.sbar{background:var(--s2);border-top:1px solid var(--br);padding:5px 14px;
+  display:flex;align-items:center;gap:14px;font-size:.5rem;color:var(--mu)}
+.sdot{width:6px;height:6px;border-radius:50%;background:var(--grn)}
+.sdon{animation:rp 2s infinite}
+.empty{text-align:center;padding:28px 14px;color:var(--mu);font-size:.6rem;line-height:2.2}
+.sb{margin-bottom:6px;padding:7px;background:var(--s2);border-radius:6px;font-size:.55rem;color:var(--mu);line-height:1.7;border-left:2px solid var(--mu)}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:var(--br);border-radius:2px}
+@media(max-width:900px){.layout{grid-template-columns:1fr;height:auto}.lgrid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header class="hdr">
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="logo">Fin<span>Bot</span> AR</div>
+    <span class="badge" style="background:var(--poc)20;border:1px solid var(--poc)50;color:var(--poc)">TPO MARKET PROFILE</span>
+    <span class="badge" style="background:var(--red)20;border:1px solid var(--red)40;color:var(--red)" id="acount">0 ALERTAS</span>
+  </div>
+  <div class="hdr-right">
+    <span id="hora" style="font-size:.5rem;color:var(--mu)">--:--</span>
+    <button class="hbtn" id="mbtn" onclick="toggleMon()">PAUSAR</button>
+    <a href="tv-dashboard.html" class="hbtn" style="border-color:var(--pur)40;color:var(--pur)">📊 TV</a>
+    <a href="https://custodiaserrana-lab.github.io/Fin-bot/" class="hbtn" style="border-color:var(--grn)40;color:var(--grn)">FinBot AR</a>
+  </div>
+</header>
+
+<div class="layout">
+<!-- LEFT -->
+<aside class="panel-left">
+  <div class="psect">
+    <div class="ptitle">DEFENSA y ENERGIA</div>
+    <div class="ai active" id="ai_LMT" onclick="selAsset(this,'NYSE:LMT','LMT','Lockheed Martin',495,460,530)">
+      <div><div class="asym" style="color:var(--red)">LMT</div><div class="aname">Lockheed Martin</div></div>
+      <span class="abadge" style="background:var(--red)20;color:var(--red)">DEF</span>
+    </div>
+    <div class="ai" id="ai_XLE" onclick="selAsset(this,'NYSE:XLE','XLE','ETF Energia',92,85,99)">
+      <div><div class="asym" style="color:var(--gold)">XLE</div><div class="aname">ETF Energia</div></div>
+      <span class="abadge" style="background:var(--gold)20;color:var(--gold)">ETF</span>
+    </div>
+    <div class="ai" id="ai_CVX" onclick="selAsset(this,'NYSE:CVX','CVX','Chevron',158,148,170)">
+      <div><div class="asym" style="color:var(--gold)">CVX</div><div class="aname">Chevron</div></div>
+      <span class="abadge" style="background:var(--gold)20;color:var(--gold)">OIL</span>
+    </div>
+    <div class="ai" id="ai_VIST" onclick="selAsset(this,'NYSE:VIST','VIST','Vista Energy',48,42,55)">
+      <div><div class="asym" style="color:var(--gold)">VIST</div><div class="aname">Vista Energy</div></div>
+      <span class="abadge" style="background:var(--gold)20;color:var(--gold)">AR</span>
+    </div>
+  </div>
+  <div class="psect">
+    <div class="ptitle">TECH</div>
+    <div class="ai" id="ai_NVDA" onclick="selAsset(this,'NASDAQ:NVDA','NVDA','NVIDIA',138,125,155)">
+      <div><div class="asym">NVDA</div><div class="aname">NVIDIA</div></div>
+      <span class="abadge" style="background:var(--pur)20;color:var(--pur)">AI</span>
+    </div>
+    <div class="ai" id="ai_AAPL" onclick="selAsset(this,'NASDAQ:AAPL','AAPL','Apple',225,210,240)">
+      <div><div class="asym">AAPL</div><div class="aname">Apple</div></div>
+      <span class="abadge" style="background:var(--pur)20;color:var(--pur)">TECH</span>
+    </div>
+    <div class="ai" id="ai_PLTR" onclick="selAsset(this,'NASDAQ:PLTR','PLTR','Palantir',92,80,105)">
+      <div><div class="asym" style="color:var(--teal)">PLTR</div><div class="aname">Palantir</div></div>
+      <span class="abadge" style="background:var(--teal)20;color:var(--teal)">GOV</span>
+    </div>
+    <div class="ai" id="ai_MELI" onclick="selAsset(this,'NASDAQ:MELI','MELI','MercadoLibre',2100,1950,2280)">
+      <div><div class="asym" style="color:var(--grn)">MELI</div><div class="aname">MercadoLibre</div></div>
+      <span class="abadge" style="background:var(--grn)20;color:var(--grn)">AR</span>
+    </div>
+  </div>
+  <div class="psect">
+    <div class="ptitle">GLOBALES CLAVE</div>
+    <div class="ai" id="ai_WTI" onclick="selAsset(this,'TVC:USOIL','WTI','Petroleo WTI',104,92,118)">
+      <div><div class="asym" style="color:var(--poc)">WTI</div><div class="aname">Petroleo WTI</div></div>
+      <span class="abadge" style="background:var(--poc)20;color:var(--poc)">OIL</span>
+    </div>
+    <div class="ai" id="ai_GOLD" onclick="selAsset(this,'TVC:GOLD','GOLD','Oro',2910,2800,3050)">
+      <div><div class="asym" style="color:var(--gold)">GOLD</div><div class="aname">Oro</div></div>
+      <span class="abadge" style="background:var(--gold)20;color:var(--gold)">REFUGIO</span>
+    </div>
+    <div class="ai" id="ai_SPX" onclick="selAsset(this,'SP:SPX','SPX','S&P 500',5521,5300,5750)">
+      <div><div class="asym">SPX</div><div class="aname">S&P 500</div></div>
+      <span class="abadge" style="background:var(--blu)20;color:var(--blu)">IDX</span>
+    </div>
+  </div>
+  <div class="psect">
+    <div class="ptitle">NOTIFICACIONES PUSH</div>
+    <div style="font-size:.53rem;color:var(--mu);margin-bottom:8px;line-height:1.7">Alertas al cruzar POC, VAH, VAL, Poor H/L y Single Prints.</div>
+    <button onclick="reqPush()" id="pbtn"
+      style="width:100%;padding:8px;background:var(--pur)20;border:1px solid var(--pur)40;
+        color:var(--pur);border-radius:7px;font-size:.58rem;cursor:pointer;font-weight:600;font-family:var(--mono)">
+      Activar notificaciones
+    </button>
+    <div id="pstatus" style="font-size:.48rem;color:var(--mu);text-align:center;margin-top:5px"></div>
+  </div>
+</aside>
+
+<!-- CENTER -->
+<main class="panel-center">
+  <div id="tvchart" style="height:420px;border-bottom:1px solid var(--br)">
+    <div class="tradingview-widget-container" style="height:100%">
+      <div class="tradingview-widget-container__widget" style="height:calc(100% - 28px)"></div>
+      <div style="font-size:.42rem;padding:3px 10px;color:var(--mu)">
+        <a href="https://www.tradingview.com/" target="_blank" style="color:var(--mu)">TradingView</a>
+      </div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+      {"autosize":true,"symbol":"NYSE:LMT","interval":"D","timezone":"America/Argentina/Buenos_Aires",
+       "theme":"dark","style":"1","locale":"es","backgroundColor":"rgba(5,5,15,0)",
+       "gridColor":"rgba(26,26,48,0.5)","range":"3M","allow_symbol_change":false,
+       "studies":["RSI@tv-basicstudies","VWAP@tv-basicstudies","MASimple@tv-basicstudies"],
+       "support_host":"https://www.tradingview.com"}
+      </script>
+    </div>
+  </div>
+
+  <div class="tpo-sect">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-family:var(--head);font-size:.76rem;font-weight:700">Market Profile TPO &mdash; <span id="tponame">LMT &middot; Lockheed Martin</span></div>
+        <div style="font-size:.5rem;color:var(--mu);margin-top:2px">Algoritmo Steidlmayer: VA=70% actividad &middot; POC=mayor concentracion &middot; Poor H/L=extremo plano&ge;2 TPOs &middot; Single=1 TPO</div>
+      </div>
+      <div class="tpoctrl">
+        <button class="tbtn active" onclick="setPer('1D',this)">1D</button>
+        <button class="tbtn" onclick="setPer('1W',this)">1S</button>
+        <button class="tbtn" onclick="setPer('1M',this)">1M</button>
+        <button class="tbtn" onclick="recalc()" style="border-color:var(--poc)40;color:var(--poc)">Recalc</button>
+      </div>
+    </div>
+
+    <div class="lgrid">
+      <div class="lcard cpoc">
+        <div class="llabel">POC &middot; Point of Control</div>
+        <div class="lprice" style="color:var(--poc)" id="lPOC">--</div>
+        <div class="lsub">Nivel de maxima concentracion de actividad historica</div>
+        <div class="lstatus" id="sPOC" style="background:var(--poc)20;color:var(--poc)">calculando</div>
+      </div>
+      <div class="lcard cvah">
+        <div class="llabel">VAH &middot; Value Area High</div>
+        <div class="lprice" style="color:var(--vah)" id="lVAH">--</div>
+        <div class="lsub">Techo del 70% de actividad &mdash; zona premium</div>
+        <div class="lstatus" id="sVAH" style="background:var(--vah)20;color:var(--vah)">calculando</div>
+      </div>
+      <div class="lcard cval">
+        <div class="llabel">VAL &middot; Value Area Low</div>
+        <div class="lprice" style="color:var(--val)" id="lVAL">--</div>
+        <div class="lsub">Piso del 70% de actividad &mdash; zona descuento</div>
+        <div class="lstatus" id="sVAL" style="background:var(--val)20;color:var(--val)">calculando</div>
+      </div>
+      <div class="lcard cph">
+        <div class="llabel">Poor High &middot; Maximo debil</div>
+        <div class="lprice" style="color:var(--poor)" id="lPH">--</div>
+        <div class="lsub">Extremo plano &ge;2 TPOs &middot; subasta incompleta</div>
+        <div class="lstatus" id="sPH" style="background:var(--poor)20;color:var(--poor)">calculando</div>
+      </div>
+      <div class="lcard cpl">
+        <div class="llabel">Poor Low &middot; Minimo debil</div>
+        <div class="lprice" style="color:var(--poor)" id="lPL">--</div>
+        <div class="lsub">Extremo plano &ge;2 TPOs &middot; subasta incompleta</div>
+        <div class="lstatus" id="sPL" style="background:var(--poor)20;color:var(--poor)">calculando</div>
+      </div>
+      <div class="lcard csp">
+        <div class="llabel">Single Print &middot; Letra unica</div>
+        <div class="lprice" style="color:var(--single)" id="lSP">--</div>
+        <div class="lsub">1 solo TPO &middot; iman de precio futuro</div>
+        <div class="lstatus" id="sSP" style="background:var(--single)20;color:var(--single)">calculando</div>
+      </div>
+    </div>
+
+    <div class="pwrap">
+      <div style="display:flex;justify-content:space-between;font-size:.52rem;color:var(--mu);margin-bottom:8px">
+        <span>Histograma TPO &mdash; actividad acumulada por nivel de precio</span>
+        <span id="profdate" style="color:var(--poc)">--</span>
+      </div>
+      <canvas id="tpoCanvas" height="260" style="display:block;width:100%"></canvas>
+      <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
+        <span style="font-size:.46rem;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;background:var(--poc);border-radius:2px;display:inline-block"></span>POC</span>
+        <span style="font-size:.46rem;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;background:var(--vah)60;border-radius:2px;display:inline-block"></span>VAH</span>
+        <span style="font-size:.46rem;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;background:var(--val)60;border-radius:2px;display:inline-block"></span>VAL</span>
+        <span style="font-size:.46rem;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;background:var(--poor)60;border-radius:2px;display:inline-block"></span>Poor H/L</span>
+        <span style="font-size:.46rem;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;background:var(--single)60;border-radius:2px;display:inline-block"></span>Single</span>
+        <span style="font-size:.46rem;color:var(--mu)">Precio actual: <strong id="cpl" style="color:var(--tx)">--</strong></span>
+      </div>
+    </div>
+
+    <div style="font-family:var(--head);font-size:.68rem;font-weight:700;margin-bottom:9px">Reglas de alerta activas</div>
+    <div id="rules"></div>
+  </div>
+</main>
+
+<!-- RIGHT -->
+<aside class="panel-right">
+  <div style="padding:11px 13px;border-bottom:1px solid var(--br);display:flex;align-items:center;justify-content:space-between">
+    <div style="font-family:var(--head);font-size:.68rem;font-weight:700">Feed de alertas</div>
+    <button onclick="clearFeed()" style="font-size:.48rem;padding:3px 7px;background:var(--s2);border:1px solid var(--br);border-radius:5px;color:var(--mu);cursor:pointer;font-family:var(--mono)">Limpiar</button>
+  </div>
+  <div id="feed"><div class="empty">Monitor activo<br>Las alertas aparecen aqui<br>al cruzar niveles TPO</div></div>
+  <div style="height:1px;background:var(--br);margin:0 9px"></div>
+  <div style="padding:11px 13px">
+    <div style="font-family:var(--head);font-size:.62rem;font-weight:700;margin-bottom:9px">Estrategia por nivel</div>
+    <div class="sb" style="border-left-color:var(--poc)"><strong style="color:var(--poc)">POC cruzado:</strong> Mayor actividad historica. Precio gravita al POC. Con volumen = continuacion. Sin volumen = rebote.</div>
+    <div class="sb" style="border-left-color:var(--vah)"><strong style="color:var(--vah)">VAH roto arriba:</strong> Zona premium. Regla del 80%: alta prob de traversar todo el VA. Buscar pullback al VAH como soporte.</div>
+    <div class="sb" style="border-left-color:var(--val)"><strong style="color:var(--val)">VAL roto abajo:</strong> Zona descuento. Sesgo bajista inmediato. Regla del 80%: suele ir al POC y continuar.</div>
+    <div class="sb" style="border-left-color:var(--poor)"><strong style="color:var(--poor)">Poor High/Low:</strong> Subasta incompleta. El mercado no termino de explorar esa direccion. Alta prob de romperse.</div>
+    <div class="sb" style="border-left-color:var(--single)"><strong style="color:var(--single)">Single Print:</strong> El precio paso volando (1 TPO). El mercado tiende a rellenar esos huecos. Actua como iman.</div>
+  </div>
+</aside>
+</div>
+
+<div class="sbar">
+  <div class="sdot sdon" id="sdot"></div>
+  <span id="mstatus">Monitoreando</span>
+  <span id="tinfo" style="margin-left:10px"></span>
+  <span id="lupd" style="margin-left:auto"></span>
+</div>
+
+<script>
+// TPO Market Profile Engine - Algoritmo Steidlmayer
+// VA=70% | POC=max frecuencia | Poor=extremo plano>=2 TPOs | Single=1 TPO
+
+var ASSET={sym:'NYSE:LMT',t:'LMT',n:'Lockheed Martin',r:495,lo:460,hi:530};
+var PER='1D', TPO=null, MON=true, MID=null, AN=0;
+var PK=(typeof Notification!=='undefined')&&Notification.permission==='granted';
+
+function genP(a,per){
+  var bars={1:26,2:130,3:520}[{D:1,W:2,M:3}[per[1]]||1]||26;
+  var sg=(a.hi-a.lo)*0.008, th=0.08, ps=[], p=a.r*(1+(Math.random()-.5)*.015);
+  for(var i=0;i<bars;i++){
+    p=Math.max(a.lo*.97,Math.min(a.hi*1.03,p+th*(a.r-p)+sg*(Math.random()*2-1)));
+    ps.push(+p.toFixed(2));
+  }
+  return ps;
+}
+
+function calcT(ps){
+  if(!ps||ps.length<5) return null;
+  var mn=Math.min.apply(0,ps),mx=Math.max.apply(0,ps),rng=mx-mn||1;
+  var tk=rng>2000?20:rng>500?5:rng>100?1:rng>10?.5:rng>1?.1:.01;
+  var H=new Map(), sn=function(p){return +(Math.round(p/tk)*tk).toFixed(6);};
+  ps.forEach(function(p){var r=sn(p);H.set(r,(H.get(r)||0)+1);});
+  var rows=[...H.keys()].sort(function(a,b){return a-b;}), tot=ps.length;
+  var poc=rows[0],pcnt=0;
+  H.forEach(function(c,r){if(c>pcnt){pcnt=c;poc=r;}});
+  poc=+poc.toFixed(6);
+  var vat=Math.ceil(tot*.70),vc=pcnt,vh=poc,vl=poc;
+  while(vc<vat){
+    var up=rows.find(function(r){return r>vh;}), dn=[...rows].reverse().find(function(r){return r<vl;});
+    var cu=up?(H.get(up)||0):0, cd=dn?(H.get(dn)||0):0;
+    if(!up&&!dn) break;
+    if(cu>=cd&&up!=null){vh=up;vc+=cu;}else if(dn!=null){vl=dn;vc+=cd;}else break;
+  }
+  var top=rows.slice(-3).reverse(), bot=rows.slice(0,3);
+  var ph=(H.get(top[0])||0)>=2&&(H.get(top[1])||0)>=2;
+  var pl=(H.get(bot[0])||0)>=2&&(H.get(bot[1])||0)>=2;
+  var poorH=ph?+rows[rows.length-1].toFixed(2):null, poorL=pl?+rows[0].toFixed(2):null;
+  var sps=rows.filter(function(r){return (H.get(r)||0)===1;}).map(function(r){return +r.toFixed(2);});
+  var msp=sps.length?sps.reduce(function(a,b){return Math.abs(b-poc)>Math.abs(a-poc)?b:a;}):null;
+  return {H:H,rows:rows,tot:tot,tk:tk,poc:+poc.toFixed(2),pcnt:pcnt,
+    vah:+vh.toFixed(2),val:+vl.toFixed(2),vc:vc,vat:vat,
+    poorH:poorH,poorL:poorL,ph:ph,pl:pl,sps:sps,msp:msp,
+    hi:+mx.toFixed(2),lo:+mn.toFixed(2),cp:+ps[ps.length-1].toFixed(2)};
+}
+
+function fmt(v,d){
+  if(v==null) return '--';
+  var dc=d!=null?d:(v>500?0:v>10?2:3);
+  return '$'+v.toLocaleString('es-AR',{minimumFractionDigits:dc,maximumFractionDigits:dc});
+}
+
+function rndr(t){
+  var cp=t.cp;
+  var pd=((cp-t.poc)/t.poc*100).toFixed(1);
+  document.getElementById('lPOC').textContent=fmt(t.poc);
+  document.getElementById('sPOC').textContent='Precio '+(cp>=t.poc?'arriba':'abajo')+' '+Math.abs(pd)+'%';
+  document.getElementById('sPOC').style.color=cp>=t.poc?'var(--grn)':'var(--red)';
+  document.getElementById('lVAH').textContent=fmt(t.vah);
+  document.getElementById('sVAH').textContent=cp>=t.vah?'Zona premium -- precio encima':'A '+fmt(t.vah-cp)+' del techo';
+  document.getElementById('sVAH').style.color=cp>=t.vah?'var(--grn)':'var(--vah)';
+  document.getElementById('lVAL').textContent=fmt(t.val);
+  document.getElementById('sVAL').textContent=cp<=t.val?'Zona descuento -- precio debajo':'A '+fmt(cp-t.val)+' del piso';
+  document.getElementById('sVAL').style.color=cp<=t.val?'var(--red)':'var(--val)';
+  document.getElementById('lPH').textContent=fmt(t.poorH);
+  document.getElementById('sPH').textContent=t.ph?'Extremo plano -- ruptura probable':'Cola sana';
+  document.getElementById('sPH').style.color=t.ph?'var(--poor)':'var(--mu)';
+  document.getElementById('lPL').textContent=fmt(t.poorL);
+  document.getElementById('sPL').textContent=t.pl?'Extremo plano -- ruptura probable':'Cola sana';
+  document.getElementById('sPL').style.color=t.pl?'var(--poor)':'var(--mu)';
+  document.getElementById('lSP').textContent=fmt(t.msp);
+  document.getElementById('sSP').textContent=t.msp?(t.sps.length+' singles en sesion'):'Sin singles relevantes';
+  document.getElementById('sSP').style.color=t.msp?'var(--single)':'var(--mu)';
+  document.getElementById('cpl').textContent=fmt(t.cp);
+}
+
+function drawC(t){
+  var canvas=document.getElementById('tpoCanvas');
+  var W=canvas.parentElement.offsetWidth-24||660; canvas.width=W;
+  var H=260,pL=66,pR=16,pT=10,pB=16,cW=W-pL-pR,cH=H-pT-pB;
+  var ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H); ctx.fillStyle='#05050f'; ctx.fillRect(0,0,W,H);
+  var rows=t.rows; if(!rows.length) return;
+  var mx=Math.max.apply(0,rows.map(function(r){return t.H.get(r)||0;}));
+  var span=rows[rows.length-1]-rows[0]||1, rh=Math.max(1.5,cH/rows.length);
+  rows.forEach(function(row,i){
+    var cnt=t.H.get(row)||0, bw=(cnt/mx)*cW*.86;
+    var y=pT+(1-(row-rows[0])/span)*cH-rh/2;
+    var bg=row===t.poc?'#ff6b3530':(row>=t.val&&row<=t.vah)?'#0a2a1a':(row===t.poorH||row===t.poorL)?'#2a0a2a':t.sps.indexOf(row)>=0?'#001a1a':'#141428';
+    ctx.fillStyle=bg; ctx.fillRect(pL,y,cW,Math.max(1,rh-.5));
+    var bc=row===t.poc?'#ff6b35':(row>=t.val&&row<=t.vah)?'#1e5e3a':(row===t.poorH||row===t.poorL)?'#7a1a7a':t.sps.indexOf(row)>=0?'#005a5a':'#1e1e3a';
+    ctx.fillStyle=bc; ctx.fillRect(pL,y,Math.max(2,bw),Math.max(1,rh-.5));
+    if(cnt>0&&rh>=5){
+      var L='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+      ctx.fillStyle=row===t.poc?'#ff6b35':'#3a3a5a';
+      ctx.font=Math.min(9,rh*.85)+'px monospace'; ctx.textAlign='left';
+      ctx.fillText(L.slice(0,Math.min(cnt,52)).slice(0,Math.floor(cW/6)),pL+2,y+rh*.78);
+    }
+    if(i%Math.max(1,Math.floor(rows.length/9))===0){
+      ctx.fillStyle='#3a3a5a'; ctx.font='9px monospace'; ctx.textAlign='right';
+      var lb=row>500?row.toFixed(0):row>10?row.toFixed(1):row.toFixed(2);
+      ctx.fillText('$'+lb,pL-3,y+rh*.7);
+    }
+  });
+  function ln(price,col,lbl){
+    if(price==null) return;
+    var y=pT+(1-(price-rows[0])/span)*cH;
+    ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(W-pR,y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=col; ctx.font='bold 8px monospace'; ctx.textAlign='right';
+    ctx.fillText(lbl,W-pR-1,y-2);
+  }
+  ln(t.vah,'#00e67690','VAH'); ln(t.val,'#ff444490','VAL'); ln(t.poc,'#ff6b35','POC');
+  ln(t.poorH,'#ff00ff70','PoorH'); ln(t.poorL,'#ff00ff70','PoorL'); ln(t.msp,'#00ffff70','Single');
+  var cy=pT+(1-(t.cp-rows[0])/span)*cH;
+  ctx.strokeStyle='#ffffff80'; ctx.lineWidth=1; ctx.setLineDash([2,3]);
+  ctx.beginPath(); ctx.moveTo(pL,cy); ctx.lineTo(W-pR,cy); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#ffffffcc'; ctx.font='bold 8px monospace'; ctx.textAlign='right';
+  ctx.fillText((t.cp>100?t.cp.toFixed(1):t.cp.toFixed(2)),W-pR-1,cy-2);
+}
+
+var RULES=[
+  {id:'poc',on:true,fired:false,col:'var(--poc)',
+   lbl:'Precio cruzo el POC extendido',
+   desc:'Atraviesa el Point of Control -- mayor concentracion historica',
+   chk:function(t){return Math.abs(t.cp-t.poc)/t.poc<.005;},
+   mk:function(t){return{type:'warning',ti:'POC cruzado -- '+ASSET.t,
+    bo:'Precio '+fmt(t.cp)+' cruzo POC '+fmt(t.poc)+'. Nivel de maxima actividad historica. Sin volumen = rebote. Con volumen = continuacion.',
+    ac:'Sin volumen = probable reversion al POC. Con volumen = seguir la tendencia.'};}},
+  {id:'vah',on:true,fired:false,col:'var(--vah)',
+   lbl:'Precio cruzo el VAH extendido hacia arriba',
+   desc:'Ruptura del techo del Value Area -- zona premium',
+   chk:function(t){return t.cp>t.vah;},
+   mk:function(t){return{type:'buy',ti:'VAH roto arriba -- '+ASSET.t,
+    bo:'Precio '+fmt(t.cp)+' > VAH '+fmt(t.vah)+'. Zona premium. Regla del 80%: alta prob de traversar todo el VA. SESGO ALCISTA.',
+    ac:'Estrategia: buscar pullback al VAH como soporte para entrar largo.'};}},
+  {id:'val',on:true,fired:false,col:'var(--val)',
+   lbl:'Precio cruzo el VAL extendido hacia abajo',
+   desc:'Ruptura del piso del Value Area -- zona descuento',
+   chk:function(t){return t.cp<t.val;},
+   mk:function(t){return{type:'critical',ti:'VAL roto abajo -- '+ASSET.t,
+    bo:'Precio '+fmt(t.cp)+' < VAL '+fmt(t.val)+'. Zona de descuento. Regla del 80%: suele ir hasta el POC y continuar al VAH opuesto. SESGO BAJISTA.',
+    ac:'Estrategia: esperar confirmacion de rechazo o ajustar stop loss.'};}},
+  {id:'ph',on:true,fired:false,col:'var(--poor)',
+   lbl:'Precio supero un maximo debil prolongado (Poor High)',
+   desc:'Extremo plano >=2 TPOs -- subasta alcista incompleta',
+   chk:function(t){return t.ph&&t.poorH!=null&&Math.abs(t.cp-t.poorH)/t.poorH<.008;},
+   mk:function(t){return{type:'warning',ti:'Poor High alcanzado -- '+ASSET.t,
+    bo:'Precio '+fmt(t.cp)+' cerca de Poor High '+fmt(t.poorH)+'. Extremo plano = subasta incompleta. Alta prob de continuacion alcista.',
+    ac:'Estrategia: preparar ruptura alcista. Si rechaza, fade rapido con stop justo.'};}},
+  {id:'pl',on:true,fired:false,col:'var(--poor)',
+   lbl:'Precio cruzo un minimo debil prolongado (Poor Low)',
+   desc:'Extremo plano >=2 TPOs -- subasta bajista incompleta',
+   chk:function(t){return t.pl&&t.poorL!=null&&Math.abs(t.cp-t.poorL)/t.poorL<.008;},
+   mk:function(t){return{type:'critical',ti:'Poor Low alcanzado -- '+ASSET.t,
+    bo:'Precio '+fmt(t.cp)+' cerca de Poor Low '+fmt(t.poorL)+'. Minimo debil. Alta prob de perforacion en sesion futura.',
+    ac:'Estrategia: revisar stops por debajo del Poor Low. No promediar a la baja.'};}},
+  {id:'sp',on:true,fired:false,col:'var(--single)',
+   lbl:'Precio cruzo la edicion extendida de letra unica (Single Print)',
+   desc:'Un solo TPO -- nivel que actua como iman de precio',
+   chk:function(t){return t.msp!=null&&Math.abs(t.cp-t.msp)/t.msp<.01;},
+   mk:function(t){return{type:'info',ti:'Single Print -- '+ASSET.t,
+    bo:'Precio '+fmt(t.cp)+' cerca de Single Print '+fmt(t.msp)+'. El precio paso solo una vez (1 TPO). '+t.sps.length+' singles en sesion.',
+    ac:'Estrategia: vigilar si consolida o rebota rapidamente (zona de relleno).'};}},
+];
+
+function rndrR(t){
+  document.getElementById('rules').innerHTML=RULES.map(function(r){
+    var tr=t?r.chk(t):false;
+    return '<div class="ri '+(tr?'fired':'')+'" id="ri_'+r.id+'">'
+      +'<div class="rdot '+(r.on?'rpulse':'')+'" style="background:'+r.col+'"></div>'
+      +'<div style="flex:1"><div style="font-size:.58rem;color:'+(tr?'var(--tx)':'var(--mu)')+'">'+r.lbl+'</div>'
+      +'<div style="font-size:.48rem;color:var(--mu);margin-top:1px">'+r.desc+'</div></div>'
+      +(tr?'<span style="font-size:.48rem;font-weight:700;color:'+r.col+'">ACTIVA</span>':'')
+      +'<button class="rtog '+(r.on?'on':'')+'" onclick="tglR(\''+r.id+'\')"></button>'
+      +'</div>';
+  }).join('');
+}
+
+function tglR(id){var r=RULES.find(function(x){return x.id===id;});if(r){r.on=!r.on;r.fired=false;}if(TPO) rndrR(TPO);}
+
+function addA(a){
+  AN++; document.getElementById('acount').textContent=AN+' ALERTAS';
+  var feed=document.getElementById('feed'), em=feed.querySelector('.empty');
+  if(em) em.remove();
+  var h=new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Argentina/Buenos_Aires'});
+  var d=document.createElement('div'); d.className='alrt '+a.type;
+  d.innerHTML='<div class="atime">'+h+' BsAs &middot; '+ASSET.t+'</div>'
+    +'<div class="atitle">'+a.ti+'</div><div class="abody">'+a.bo+'</div>'
+    +'<span class="aact">'+a.ac+'</span>';
+  feed.insertBefore(d,feed.firstChild);
+  if(PK&&typeof Notification!=='undefined'){try{new Notification(a.ti,{body:a.bo});}catch(e){}}
+}
+
+function chkR(t){RULES.forEach(function(r){if(!r.on) return;if(r.chk(t)&&!r.fired){r.fired=true;addA(r.mk(t));setTimeout(function(){r.fired=false;},60000);}});}
+
+function recalc(){
+  var ps=genP(ASSET,PER); TPO=calcT(ps);
+  if(!TPO) return;
+  rndr(TPO); drawC(TPO); rndrR(TPO); chkR(TPO);
+  var now=new Date();
+  document.getElementById('profdate').textContent=now.toLocaleDateString('es-AR')+' '+now.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Argentina/Buenos_Aires'});
+  document.getElementById('tinfo').textContent=TPO.tot+' TPOs &middot; VA '+Math.round(TPO.vc/TPO.tot*100)+'% &middot; $'+TPO.lo.toFixed(0)+'-$'+TPO.hi.toFixed(0);
+  document.getElementById('lupd').textContent='Actualizado '+now.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Argentina/Buenos_Aires'});
+}
+
+function selAsset(el,sym,tick,name,ref,lo,hi){
+  ASSET={sym:sym,t:tick,n:name,r:ref,lo:lo,hi:hi};
+  document.querySelectorAll('.ai').forEach(function(x){x.classList.remove('active');});
+  el.classList.add('active');
+  document.getElementById('tponame').textContent=tick+' &middot; '+name;
+  RULES.forEach(function(r){r.fired=false;});
+  var tv=document.getElementById('tvchart');
+  tv.innerHTML='<div class="tradingview-widget-container" style="height:100%"><div class="tradingview-widget-container__widget" style="height:calc(100% - 28px)"></div><div style="font-size:.42rem;padding:3px 10px;color:var(--mu)"><a href="https://www.tradingview.com/" target="_blank" style="color:var(--mu)">TradingView</a></div></div>';
+  var s=document.createElement('script'); s.type='text/javascript';
+  s.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js'; s.async=true;
+  s.textContent=JSON.stringify({autosize:true,symbol:sym,interval:'D',timezone:'America/Argentina/Buenos_Aires',theme:'dark',style:'1',locale:'es',backgroundColor:'rgba(5,5,15,0)',gridColor:'rgba(26,26,48,0.5)',range:'3M',allow_symbol_change:false,studies:['RSI@tv-basicstudies','VWAP@tv-basicstudies','MASimple@tv-basicstudies'],support_host:'https://www.tradingview.com'});
+  tv.querySelector('.tradingview-widget-container__widget').appendChild(s);
+  recalc();
+}
+
+function setPer(p,btn){PER=p;document.querySelectorAll('.tbtn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');recalc();}
+function toggleMon(){MON=!MON;document.getElementById('mbtn').textContent=MON?'PAUSAR':'REANUDAR';document.getElementById('sdot').style.background=MON?'var(--grn)':'var(--mu)';document.getElementById('mstatus').textContent=MON?'Monitoreando':'Pausado';}
+function clearFeed(){AN=0;document.getElementById('acount').textContent='0 ALERTAS';document.getElementById('feed').innerHTML='<div class="empty">Feed limpiado<br>Esperando alertas</div>';RULES.forEach(function(r){r.fired=false;});}
+function reqPush(){
+  if(!('Notification' in window)){document.getElementById('pstatus').textContent='Sin soporte en este browser';return;}
+  Notification.requestPermission().then(function(p){PK=p==='granted';
+    if(p==='granted'){document.getElementById('pbtn').textContent='Notificaciones activas';document.getElementById('pbtn').style.color='var(--grn)';document.getElementById('pstatus').textContent='Push habilitado';document.getElementById('pstatus').style.color='var(--grn)';}
+    else{document.getElementById('pstatus').textContent='Permiso denegado -- activar en config del browser';}});
+}
+setInterval(function(){document.getElementById('hora').textContent=new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Argentina/Buenos_Aires'});},1000);
+window.addEventListener('load',function(){recalc();MID=setInterval(function(){if(MON) recalc();},30000);if(typeof Notification!=='undefined'&&Notification.permission==='granted'){PK=true;document.getElementById('pbtn').textContent='Notificaciones activas';document.getElementById('pbtn').style.color='var(--grn)';}});
+</script>
+</body>
+</html>
