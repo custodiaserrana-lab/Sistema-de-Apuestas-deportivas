@@ -92,18 +92,33 @@ def ejecutar_backtesting(url_csv, nombre_liga):
         logging.error(f"Error descargando {url_csv}: {e}")
         return {'apuestas': 0, 'p_l': 0}, 0, []
 
-    columnas_requeridas = ['FTR', 'PSH', 'PSD', 'PSA', 'FTHG', 'FTAG', 'HomeTeam', 'AwayTeam', 'Date']
-    faltantes = [c for c in columnas_requeridas if c not in df.columns]
-    if faltantes:
-        logging.warning(f"{nombre_liga}: columnas faltantes {faltantes} — se omite esta liga")
+    columnas_base = ['FTR', 'FTHG', 'FTAG', 'HomeTeam', 'AwayTeam', 'Date']
+    faltantes_base = [c for c in columnas_base if c not in df.columns]
+    if faltantes_base:
+        logging.warning(f"{nombre_liga}: columnas base faltantes {faltantes_base} — se omite")
         return {'apuestas': 0, 'p_l': 0}, 0, []
+
+    # Detectar columnas de cuotas disponibles (Pinnacle o promedio según liga)
+    if all(c in df.columns for c in ['PSH', 'PSD', 'PSA']):
+        col_h, col_d, col_a = 'PSH', 'PSD', 'PSA'
+    elif all(c in df.columns for c in ['BbAvH', 'BbAvD', 'BbAvA']):
+        col_h, col_d, col_a = 'BbAvH', 'BbAvD', 'BbAvA'
+    elif all(c in df.columns for c in ['AvgH', 'AvgD', 'AvgA']):
+        col_h, col_d, col_a = 'AvgH', 'AvgD', 'AvgA'
+    elif all(c in df.columns for c in ['B365H', 'B365D', 'B365A']):
+        col_h, col_d, col_a = 'B365H', 'B365D', 'B365A'
+    else:
+        logging.warning(f"{nombre_liga}: no se encontraron columnas de cuotas — se omite")
+        return {'apuestas': 0, 'p_l': 0}, 0, []
+
+    logging.info(f"{nombre_liga}: usando cuotas {col_h}/{col_d}/{col_a}")
 
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
     df = df.dropna(subset=['Date'])
 
     # FIX: Separar partidos históricos (con resultado) de futuros (sin resultado)
     hoy = pd.Timestamp.now().normalize()
-    df_historico = df[df['Date'] < hoy].dropna(subset=['FTR', 'PSH', 'PSD', 'PSA', 'FTHG', 'FTAG'])
+    df_historico = df[df['Date'] < hoy].dropna(subset=['FTR', col_h, col_d, col_a, 'FTHG', 'FTAG'])
     df_futuro = df[df['Date'] >= hoy]
 
     logging.info(f"{nombre_liga}: {len(df_historico)} partidos históricos | {len(df_futuro)} partidos futuros/hoy")
@@ -131,9 +146,9 @@ def ejecutar_backtesting(url_csv, nombre_liga):
             x = calcular_superioridad(equipos_goles[h], equipos_goles[a])
             p_mod_L, p_mod_E, p_mod_V = motor_probabilidades(x)
             cuotas = [
-                ('H', p_mod_L, fila['PSH']),
-                ('D', p_mod_E, fila['PSD']),
-                ('A', p_mod_V, fila['PSA'])
+                ('H', p_mod_L, fila[col_h]),
+                ('D', p_mod_E, fila[col_d]),
+                ('A', p_mod_V, fila[col_a])
             ]
             for tipo, p_m, cuota in cuotas:
                 edge = p_m - (100 / cuota)
@@ -162,8 +177,8 @@ def ejecutar_backtesting(url_csv, nombre_liga):
         h = fila['HomeTeam']
         a = fila['AwayTeam']
 
-        # Necesitamos cuotas en el CSV futuro — si no las hay, saltar
-        tiene_cuotas = all(c in fila and pd.notna(fila[c]) for c in ['PSH', 'PSD', 'PSA'])
+        # Necesitamos cuotas en el CSV futuro con las columnas detectadas
+        tiene_cuotas = all(c in fila and pd.notna(fila[c]) for c in [col_h, col_d, col_a])
         if not tiene_cuotas:
             continue
 
@@ -171,9 +186,9 @@ def ejecutar_backtesting(url_csv, nombre_liga):
             x = calcular_superioridad(equipos_goles[h], equipos_goles[a])
             p_mod_L, p_mod_E, p_mod_V = motor_probabilidades(x)
             cuotas = [
-                ('H', p_mod_L, fila['PSH']),
-                ('D', p_mod_E, fila['PSD']),
-                ('A', p_mod_V, fila['PSA'])
+                ('H', p_mod_L, fila[col_h]),
+                ('D', p_mod_E, fila[col_d]),
+                ('A', p_mod_V, fila[col_a])
             ]
             for tipo, p_m, cuota in cuotas:
                 if cuota <= 1.0:
