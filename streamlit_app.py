@@ -512,7 +512,8 @@ with tab4:
             sheet_id = st.secrets["SHEET_ID"]
             return client.open_by_key(sheet_id)
         except Exception as e:
-            return None, str(e)
+            st.error(f"Error conectando Google Sheets: {e}")
+            return None
 
     def cargar_apuestas(spreadsheet):
         """Carga el historial de apuestas desde Google Sheets."""
