@@ -506,7 +506,19 @@ with tab4:
                 "https://www.googleapis.com/auth/spreadsheets",
                 "https://www.googleapis.com/auth/drive"
             ]
+
+            # FIX: copiar el dict y reparar la private_key si tiene saltos de línea rotos
             creds_dict = dict(st.secrets["gcp_service_account"])
+            pk = creds_dict.get("private_key", "")
+            # Si la key tiene \\n literales en vez de \n reales, los convierte
+            if "\\n" in pk:
+                pk = pk.replace("\\n", "\n")
+            # Si la key no tiene saltos de línea en absoluto, los reconstruye
+            if "\n" not in pk:
+                pk = pk.replace("-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN RSA PRIVATE KEY-----\n")
+                pk = pk.replace("-----END RSA PRIVATE KEY-----", "\n-----END RSA PRIVATE KEY-----\n")
+            creds_dict["private_key"] = pk
+
             creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
             client = gspread.authorize(creds)
             sheet_id = st.secrets["SHEET_ID"]
