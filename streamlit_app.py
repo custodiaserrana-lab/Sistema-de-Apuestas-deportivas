@@ -357,12 +357,12 @@ with tab2:
                     return f'color: {color}; font-weight: bold'
 
                 st.dataframe(
-                    df_resumen.style.applymap(color_yield, subset=['yield %']),
-                    use_container_width=True
+                    df_resumen.style.map(color_yield, subset=['yield %']),
+                    width="stretch"
                 )
 
                 st.subheader("Detalle completo de apuestas históricas")
-                st.dataframe(st.session_state.df_backtest, use_container_width=True)
+                st.dataframe(st.session_state.df_backtest, width="stretch")
 
                 st.markdown("<div class='warning-box'>⚠️ Argentina, Brasil y MLS pueden mostrar 0 apuestas por falta de cuotas Pinnacle en el dataset.</div>", unsafe_allow_html=True)
             else:
@@ -379,7 +379,7 @@ with tab2:
         st.divider()
         st.subheader("📈 Historial ROI acumulado")
         df_roi = pd.read_csv(roi_path)
-        st.dataframe(df_roi, use_container_width=True)
+        st.dataframe(df_roi, width="stretch")
 
     if os.path.exists(backtest_path):
         st.divider()
@@ -389,7 +389,7 @@ with tab2:
             gen = df_bt['generado_en'].iloc[0]
             st.markdown(f"<div class='timestamp-box'>Generado el: <b>{gen}</b> · {len(df_bt)} registros</div>", unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
-        st.dataframe(df_bt, use_container_width=True)
+        st.dataframe(df_bt, width="stretch")
 
 # -----------------------------------------------
 # TAB 3 — DETECCION EN VIVO
@@ -435,7 +435,7 @@ with tab3:
                 st.success(f"✅ {len(apuestas)} value bets detectadas para las próximas {horas_ventana}h")
                 cols_order = ['liga', 'fecha', 'hora_arg', 'local', 'visitante', 'apuesta', 'cuota', 'prob_modelo', 'prob_impl', 'edge', 'con_stats']
                 cols_show = [c for c in cols_order if c in df_result.columns]
-                st.dataframe(df_result[cols_show], use_container_width=True)
+                st.dataframe(df_result[cols_show], width="stretch")
             else:
                 st.info(
                     f"No se detectaron value bets en las próximas {horas_ventana}h. "
@@ -482,7 +482,7 @@ with tab3:
 
         cols_order = ['liga', 'fecha', 'hora_arg', 'local', 'visitante', 'apuesta', 'cuota', 'prob_modelo', 'prob_impl', 'edge', 'con_stats']
         cols_show = [c for c in cols_order if c in df_last.columns]
-        st.dataframe(df_last[cols_show] if cols_show else df_last, use_container_width=True)
+        st.dataframe(df_last[cols_show] if cols_show else df_last, width="stretch")
 
 # -----------------------------------------------
 # TAB 4 — FINANZAS
@@ -725,8 +725,8 @@ with tab4:
                     return f'color: {color}; font-weight: bold'
 
                 st.dataframe(
-                    resumen_liga.style.applymap(color_yield_fin, subset=['yield %']),
-                    use_container_width=True
+                    resumen_liga.style.map(color_yield_fin, subset=['yield %']),
+                    width="stretch"
                 )
 
             # ===============================
@@ -776,7 +776,7 @@ with tab4:
 
             cols_hist = ['fecha', 'liga', 'local', 'visitante', 'apuesta', 'cuota', 'stake_ars', 'resultado', 'ganancia_ars', 'bankroll_post']
             cols_show_hist = [c for c in cols_hist if c in df_fin.columns]
-            st.dataframe(df_fin[cols_show_hist].sort_values('fecha', ascending=False) if 'fecha' in df_fin.columns else df_fin[cols_show_hist], use_container_width=True)
+            st.dataframe(df_fin[cols_show_hist].sort_values('fecha', ascending=False) if 'fecha' in df_fin.columns else df_fin[cols_show_hist], width="stretch")
 
             # Descargar historial
             csv_hist = df_fin[cols_show_hist].to_csv(index=False).encode('utf-8')
