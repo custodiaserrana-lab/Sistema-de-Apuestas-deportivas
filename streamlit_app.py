@@ -601,12 +601,278 @@ with tab3:
         st.download_button("⬇️ Descargar CSV", data=csv_dl,
                            file_name=f"value_bets_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", mime="text/csv")
 
-# -----------------------------------------------
-# TAB 4 — FINANZAS  (sin cambios — preservado tal cual)
+# TAB 4 — FINANZAS
+# Lee y escribe en Google Sheets para historial persistente
 # -----------------------------------------------
 with tab4:
-    st.subheader("💰 Finanzas")
-    st.info("Pestaña Finanzas — contenido original preservado. Pegá aquí el bloque de tab4 de tu versión actual.")
+    st.subheader("💰 Gestión Financiera de Apuestas")
+    st.markdown("Registrá tus apuestas, controlá tu bankroll y analizá tu rendimiento histórico.")
+
+    # ===============================
+    # CONEXION GOOGLE SHEETS
+    # ===============================
+
+    def conectar_sheets():
+        """Conecta con Google Sheets usando credenciales de Streamlit Secrets."""
+        try:
+            import gspread
+            from google.oauth2.service_account import Credentials
+
+            scopes = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            pk = creds_dict.get("private_key", "")
+            if "\\n" in pk:
+                pk = pk.replace("\\n", "\n")
+            if "\n" not in pk:
+                pk = pk.replace("-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN RSA PRIVATE KEY-----\n")
+                pk = pk.replace("-----END RSA PRIVATE KEY-----", "\n-----END RSA PRIVATE KEY-----\n")
+            creds_dict["private_key"] = pk
+
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+            client = gspread.authorize(creds)
+            sheet_id = st.secrets["SHEET_ID"]
+            return client.open_by_key(sheet_id)
+        except Exception as e:
+            st.error(f"Error conectando Google Sheets: {e}")
+            return None
+
+    def cargar_apuestas(spreadsheet):
+        """Carga el historial de apuestas desde Google Sheets."""
+        try:
+            hoja = spreadsheet.worksheet("Apuestas")
+            data = hoja.get_all_records()
+            if data:
+                return pd.DataFrame(data)
+            else:
+                return pd.DataFrame(columns=[
+                    "fecha", "liga", "local", "visitante", "apuesta",
+                    "cuota", "stake_ars", "resultado", "ganancia_ars", "bankroll_post"
+                ])
+        except Exception:
+            try:
+                hoja = spreadsheet.add_worksheet(title="Apuestas", rows=1000, cols=15)
+                hoja.append_row([
+                    "fecha", "liga", "local", "visitante", "apuesta",
+                    "cuota", "stake_ars", "resultado", "ganancia_ars", "bankroll_post"
+                ])
+                return pd.DataFrame(columns=[
+                    "fecha", "liga", "local", "visitante", "apuesta",
+                    "cuota", "stake_ars", "resultado", "ganancia_ars", "bankroll_post"
+                ])
+            except Exception as e2:
+                st.error(f"No se pudo crear la hoja: {e2}")
+                return pd.DataFrame()
+
+    def guardar_apuesta(spreadsheet, fila):
+        """Guarda una nueva apuesta en Google Sheets."""
+        try:
+            hoja = spreadsheet.worksheet("Apuestas")
+            hoja.append_row(fila)
+            return True
+        except Exception as e:
+            st.error(f"Error guardando: {e}")
+            return False
+
+    # ===============================
+    # KELLY CRITERION
+    # ===============================
+
+    def kelly_stake(bankroll, prob, cuota, fraccion=0.5):
+        """Calcula el stake recomendado por Kelly Half."""
+        b = cuota - 1
+        p = prob / 100
+        q = 1 - p
+        kelly = (b * p - q) / b
+        kelly_half = max(0, kelly * fraccion)
+        return round(kelly_half * bankroll, 2), round(kelly_half * 100, 2)
+
+    # ===============================
+    # CONECTAR Y CARGAR DATOS
+    # ===============================
+
+    spreadsheet = conectar_sheets()
+
+    if spreadsheet is None:
+        st.markdown("""
+        <div class='warning-box'>
+        ⚠️ <b>Google Sheets no está configurado todavía.</b><br><br>
+        Para activarlo necesitás agregar en Streamlit Cloud → Settings → Secrets:<br><br>
+        <code>[gcp_service_account]</code><br>
+        <code>type = "service_account"</code><br>
+        <code>... (el contenido del JSON que bajaste)</code><br><br>
+        <code>SHEET_ID = "el-id-de-tu-planilla"</code>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        df_fin = cargar_apuestas(spreadsheet)
+
+        if not df_fin.empty and 'ganancia_ars' in df_fin.columns:
+            df_fin['ganancia_ars']   = pd.to_numeric(df_fin['ganancia_ars'],   errors='coerce').fillna(0)
+            df_fin['stake_ars']      = pd.to_numeric(df_fin['stake_ars'],      errors='coerce').fillna(0)
+            df_fin['cuota']          = pd.to_numeric(df_fin['cuota'],          errors='coerce').fillna(0)
+            df_fin['bankroll_post']  = pd.to_numeric(df_fin['bankroll_post'],  errors='coerce').fillna(0)
+
+            total_apostado = df_fin['stake_ars'].sum()
+            ganancia_total = df_fin['ganancia_ars'].sum()
+            total_apuestas = len(df_fin)
+            ganadas        = len(df_fin[df_fin['resultado'] == '✅ Ganada'])
+            perdidas       = len(df_fin[df_fin['resultado'] == '❌ Perdida'])
+            tasa_acierto   = (ganadas / total_apuestas * 100) if total_apuestas > 0 else 0
+            yield_total    = (ganancia_total / total_apostado * 100) if total_apostado > 0 else 0
+            bankroll_actual = df_fin['bankroll_post'].iloc[-1] if not df_fin.empty else BANKROLL_ARS
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            m1, m2, m3, m4, m5 = st.columns(5)
+            with m1:
+                color = '#00d4aa' if ganancia_total >= 0 else '#ff6b4d'
+                st.markdown(f"<div class='metric-box'><div class='metric-val' style='color:{color}'>$ {ganancia_total:,.0f}</div><div class='metric-lbl'>P&L Total (ARS)</div></div>", unsafe_allow_html=True)
+            with m2:
+                color = '#00d4aa' if yield_total >= 0 else '#ff6b4d'
+                st.markdown(f"<div class='metric-box'><div class='metric-val' style='color:{color}'>{yield_total:.1f}%</div><div class='metric-lbl'>Yield</div></div>", unsafe_allow_html=True)
+            with m3:
+                st.markdown(f"<div class='metric-box'><div class='metric-val'>{tasa_acierto:.0f}%</div><div class='metric-lbl'>Tasa de Acierto</div></div>", unsafe_allow_html=True)
+            with m4:
+                st.markdown(f"<div class='metric-box'><div class='metric-val'>{total_apuestas}</div><div class='metric-lbl'>Apuestas ({ganadas}✅ {perdidas}❌)</div></div>", unsafe_allow_html=True)
+            with m5:
+                st.markdown(f"<div class='metric-box'><div class='metric-val'>$ {bankroll_actual:,.0f}</div><div class='metric-lbl'>Bankroll Actual</div></div>", unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+        st.divider()
+        st.subheader("➕ Registrar nueva apuesta")
+
+        if not df_fin.empty and 'bankroll_post' in df_fin.columns and len(df_fin) > 0:
+            try:
+                bankroll_actual = float(df_fin['bankroll_post'].iloc[-1])
+            except Exception:
+                bankroll_actual = 30000.0
+        else:
+            bankroll_actual = 30000.0
+
+        col_f1, col_f2 = st.columns(2)
+
+        with col_f1:
+            fecha_ap     = st.date_input("Fecha", value=datetime.now(timezone.utc).date())
+            liga_ap      = st.selectbox("Liga", [
+                "Premier League","La Liga","Serie A","Bundesliga",
+                "Ligue 1","Eredivisie","Portugal","Argentina","Brasil","MLS","Otra"
+            ])
+            local_ap     = st.text_input("Equipo local",     placeholder="Ej: Manchester City")
+            visitante_ap = st.text_input("Equipo visitante", placeholder="Ej: Arsenal")
+            apuesta_ap   = st.selectbox("Tipo de apuesta", ["Local","Empate","Visitante"])
+
+        with col_f2:
+            cuota_ap = st.number_input("Cuota", min_value=1.01, max_value=20.0, value=1.80, step=0.01)
+            prob_ap  = st.number_input("Probabilidad estimada (%)", min_value=1.0, max_value=99.0, value=55.0, step=0.5)
+
+            kelly_monto, kelly_pct = kelly_stake(bankroll_actual, prob_ap, cuota_ap)
+            st.markdown(
+                f"<div class='info-box'>🎯 Kelly Half sugiere: <b>$ {kelly_monto:,.0f} ARS</b> ({kelly_pct:.1f}% del bankroll)</div>",
+                unsafe_allow_html=True
+            )
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            stake_ap     = st.number_input("Stake real (ARS)", min_value=0.0, value=float(kelly_monto), step=100.0)
+            resultado_ap = st.selectbox("Resultado", ["⏳ Pendiente","✅ Ganada","❌ Perdida"])
+
+        if resultado_ap == "✅ Ganada":
+            ganancia = round(stake_ap * (cuota_ap - 1), 2)
+        elif resultado_ap == "❌ Perdida":
+            ganancia = -stake_ap
+        else:
+            ganancia = 0.0
+
+        bankroll_post = round(bankroll_actual + ganancia, 2)
+
+        if resultado_ap != "⏳ Pendiente":
+            color_g = '#00d4aa' if ganancia >= 0 else '#ff6b4d'
+            st.markdown(
+                f"<div class='metric-box' style='margin-top:12px'>"
+                f"<div class='metric-val' style='color:{color_g}'>$ {ganancia:+,.0f}</div>"
+                f"<div class='metric-lbl'>Ganancia · Bankroll post: $ {bankroll_post:,.0f}</div>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        if st.button("💾 Guardar apuesta", key="btn_guardar_apuesta"):
+            if not local_ap or not visitante_ap:
+                st.warning("Completá al menos los equipos local y visitante.")
+            else:
+                fila = [
+                    str(fecha_ap), liga_ap, local_ap, visitante_ap, apuesta_ap,
+                    cuota_ap, stake_ap, resultado_ap, ganancia, bankroll_post
+                ]
+                ok = guardar_apuesta(spreadsheet, fila)
+                if ok:
+                    st.success("✅ Apuesta guardada correctamente en Google Sheets.")
+                    st.rerun()
+
+        if not df_fin.empty and len(df_fin) > 0:
+            st.divider()
+            st.subheader("📊 Rendimiento por liga")
+            df_terminadas = df_fin[df_fin['resultado'] != '⏳ Pendiente'].copy()
+            if not df_terminadas.empty:
+                resumen_liga = df_terminadas.groupby('liga').agg(
+                    apuestas=('stake_ars', 'count'),
+                    apostado=('stake_ars', 'sum'),
+                    ganancia=('ganancia_ars', 'sum')
+                ).reset_index()
+                resumen_liga['yield %'] = (resumen_liga['ganancia'] / resumen_liga['apostado'] * 100).round(1)
+                resumen_liga['ganadas'] = df_terminadas[df_terminadas['resultado'] == '✅ Ganada'].groupby('liga').size().reindex(resumen_liga['liga']).fillna(0).values
+                resumen_liga = resumen_liga.sort_values('yield %', ascending=False)
+
+                def color_yield_fin(val):
+                    color = '#00d4aa' if val > 0 else '#ff6b4d'
+                    return f'color: {color}; font-weight: bold'
+
+                st.dataframe(resumen_liga.style.map(color_yield_fin, subset=['yield %']), width="stretch")
+
+            st.divider()
+            st.subheader("📈 Evolución del bankroll")
+            df_evol = df_fin[df_fin['bankroll_post'] > 0].copy()
+            if not df_evol.empty:
+                import matplotlib.pyplot as plt
+                import matplotlib.ticker as mticker
+                fig, ax = plt.subplots(figsize=(10, 3))
+                fig.patch.set_facecolor('#0e1117')
+                ax.set_facecolor('#1a1f2e')
+                ax.plot(range(len(df_evol)), df_evol['bankroll_post'].values,
+                        color='#00d4aa', linewidth=2, marker='o', markersize=4)
+                ax.fill_between(range(len(df_evol)), df_evol['bankroll_post'].values,
+                                alpha=0.15, color='#00d4aa')
+                ax.set_xlabel("Apuesta #", color='#8892a4', fontsize=9)
+                ax.set_ylabel("Bankroll (ARS)", color='#8892a4', fontsize=9)
+                ax.tick_params(colors='#8892a4')
+                ax.spines['bottom'].set_color('#2a2f3e')
+                ax.spines['left'].set_color('#2a2f3e')
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'${x:,.0f}'))
+                plt.tight_layout()
+                st.pyplot(fig)
+                plt.close()
+
+            st.divider()
+            st.subheader("📋 Historial completo de apuestas")
+            cols_hist      = ['fecha','liga','local','visitante','apuesta','cuota','stake_ars','resultado','ganancia_ars','bankroll_post']
+            cols_show_hist = [c for c in cols_hist if c in df_fin.columns]
+            st.dataframe(
+                df_fin[cols_show_hist].sort_values('fecha', ascending=False) if 'fecha' in df_fin.columns else df_fin[cols_show_hist],
+                width="stretch"
+            )
+            csv_hist = df_fin[cols_show_hist].to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Descargar historial CSV",
+                data=csv_hist,
+                file_name=f"historial_apuestas_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
 
 # -----------------------------------------------
 # TAB 5 — POD  ← NUEVO
