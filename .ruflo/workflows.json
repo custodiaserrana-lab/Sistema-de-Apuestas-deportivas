@@ -1,1 +1,102 @@
+{
+  "workflows": [
+    {
+      "id": "weekly_analysis",
+      "name": "Pipeline Semanal Completo",
+      "schedule": "0 6 * * 1",
+      "timezone": "America/Argentina/Buenos_Aires",
+      "description": "Ejecuta cada lunes 06:00 ARG — actualiza datos, detecta value bets, publica en Telegram",
+      "parallel": true,
+      "steps": [
+        {
+          "step": 1,
+          "agent": "agent_1",
+          "task": "Descargar CSV actualizados de las 10 ligas",
+          "parallel_ligas": true,
+          "output": "csv_actualizado_{liga}"
+        },
+        {
+          "step": 2,
+          "agent": "agent_2",
+          "task": "Recalcular ratings con datos nuevos",
+          "depends_on": [1],
+          "parallel_ligas": true,
+          "output": "ratings_{liga}"
+        },
+        {
+          "step": 3,
+          "agent": "agent_3",
+          "task": "Detectar value bets para próximas 48h via The Odds API",
+          "depends_on": [2],
+          "config": { "ventana_horas": 48 },
+          "output": "value_bets_semana"
+        },
+        {
+          "step": 4,
+          "agent": "agent_4",
+          "task": "Publicar señales accionables en Telegram",
+          "depends_on": [3],
+          "filtro": "ev_pct >= 5.0",
+          "output": "mensajes_enviados"
+        },
+        {
+          "step": 5,
+          "agent": "agent_5",
+          "task": "Actualizar resultados semana anterior en Google Sheets",
+          "depends_on": [],
+          "parallel_con": [1],
+          "output": "resultados_actualizados"
+        },
+        {
+          "step": 6,
+          "agent": "agent_6",
+          "task": "Generar reporte ROI semanal y ajustar parámetros",
+          "depends_on": [4, 5],
+          "output": "reporte_roi_semana"
+        }
+      ]
+    },
+    {
+      "id": "daily_check",
+      "name": "Check Diario de Señales",
+      "schedule": "0 9 * * *",
+      "timezone": "America/Argentina/Buenos_Aires",
+      "description": "Ejecuta cada día 09:00 ARG — detecta señales del día",
+      "steps": [
+        {
+          "step": 1,
+          "agent": "agent_3",
+          "task": "Detectar value bets próximas 24h",
+          "config": { "ventana_horas": 24 }
+        },
+        {
+          "step": 2,
+          "agent": "agent_4",
+          "task": "Publicar solo señales FUERTES (EV > 8%)",
+          "depends_on": [1],
+          "filtro": "ev_pct >= 8.0"
+        }
+      ]
+    },
+    {
+      "id": "manual_analysis",
+      "name": "Análisis Manual On-Demand",
+      "trigger": "manual",
+      "description": "Ejecutar cuando querés un análisis inmediato",
+      "steps": [
+        { "step": 1, "agent": "agent_1", "task": "Descargar CSV" },
+        { "step": 2, "agent": "agent_2", "task": "Calcular ratings", "depends_on": [1] },
+        { "step": 3, "agent": "agent_3", "task": "Detectar value bets 48h", "depends_on": [2] },
+        { "step": 4, "agent": "agent_4", "task": "Publicar en Telegram", "depends_on": [3] }
+      ]
+    }
+  ],
+  "comandos_claude_code": {
+    "semanal":  "claude-flow orchestrate 'run weekly_analysis' --parallel",
+    "diario":   "claude-flow orchestrate 'run daily_check'",
+    "manual":   "claude-flow orchestrate 'run manual_analysis'",
+    "status":   "claude-flow swarm status",
+    "memoria":  "claude-flow memory query 'bot/ultimo_roi'"
+  }
+}
 
