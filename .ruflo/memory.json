@@ -1,1 +1,30 @@
+{
+  "namespace": "futbol_quant_bot",
+  "persistent": true,
+  "entries": {
+    "bot/proyecto": "Futbol Quant Bot — Custodia Serrana Lab — Buenos Aires Argentina",
+    "bot/repo": "custodiaserrana-lab/Sistema-de-Apuestas-deportivas",
+    "bot/deployment": "Streamlit Cloud (UI) + Railway (Telegram Bot)",
+    "bot/telegram/chat_id": "5976165080",
+    "bot/telegram/bot_id": "8752280711",
+    "bot/bankroll": "30000 ARS — Kelly Half — 1 unidad = 300 ARS",
+    "bot/edge_minimo": "3.0% — ajustable por agent_6",
+    "bot/afiliado/casa": "Melbet",
+    "bot/afiliado/url": "https://melbet.com/?ref=TUCODIGO",
+    "bot/afiliado/pago": "Mercado Pago CVU — semanal — minimo 30 USD",
+    "ligas/Argentina": "45 equipos — formato extra — columnas AvgCH/PSCH — encoding utf-8-sig",
+    "ligas/Brasil": "38 equipos — formato extra — columnas AvgCH/PSCH — encoding utf-8-sig",
+    "ligas/MLS": "formato extra — columnas AvgCH/PSCH — encoding utf-8-sig",
+    "ligas/europeas": "Premier_League La_Liga Serie_A Bundesliga Ligue_1 Eredivisie Portugal — formato estandar",
+    "fix/columnas_arg_bra": "Home→HomeTeam HG→FTHG AG→FTAG Res→FTR AvgCH→AvgH PSCH→PSH MaxCH→MaxH B365CH→B365H",
+    "fix/encoding": "utf-8-sig elimina BOM ï»¿Country de CSV extra",
+    "motor/formula_pL": "1.56 * x + 46.47",
+    "motor/formula_pV": "0.03 * x^2 - 1.27 * x + 23.65",
+    "motor/formula_pE": "-0.03 * x^2 - 0.29 * x + 29.48",
+    "motor/kelly": "f = 0.5 * [(p*b - q) / b] — Kelly Half",
+    "archivos/criticos": "streamlit_app.py app.py main.py config/ligas.yaml — NO modificar sin backup",
+    "ultimo_analisis": "22/03/2026 03:12 ARG — 48 señales — 26 con historial",
+    "ultimo_roi": "pendiente — sin suficientes apuestas registradas aun"
+  }
+}
 
