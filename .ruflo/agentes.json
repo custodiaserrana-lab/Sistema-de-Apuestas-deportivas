@@ -98,8 +98,8 @@
         "token_env": "TELEGRAM_TOKEN",
         "afiliado": {
           "casa": "Melbet",
-          "codigo": "TUCODIGO",
-          "url": "https://melbet.com/?ref=TUCODIGO",
+          "codigo": "5392543",
+          "url": "https://melbet.com/?ref=5392543",
           "bono": "+100% primer depósito en pesos 🇦🇷"
         },
         "formato_señal": "✅ VALUE BET\n━━━━━━━━━━━━━━━━━━━━\n🏆 {liga}\n⚽ {local} vs {visitante}\n🎯 {apuesta} — cuota: {cuota}\n📊 EV: +{edge}% | Kelly½: {kelly}%\n💵 Stake: ${stake_ars} ARS ({stake_unidades}u)\n👉 Apostá: [Melbet](https://melbet.com/?ref=TUCODIGO)\n━━━━━━━━━━━━━━━━━━━━",
