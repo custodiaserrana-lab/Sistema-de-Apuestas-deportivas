@@ -10,7 +10,7 @@
     "bot/bankroll": "30000 ARS — Kelly Half — 1 unidad = 300 ARS",
     "bot/edge_minimo": "3.0% — ajustable por agent_6",
     "bot/afiliado/casa": "Melbet",
-    "bot/afiliado/url": "https://melbet.com/?ref=TUCODIGO",
+    "bot/afiliado/url": "https://melbet.com/?ref=5392543",
     "bot/afiliado/pago": "Mercado Pago CVU — semanal — minimo 30 USD",
     "ligas/Argentina": "45 equipos — formato extra — columnas AvgCH/PSCH — encoding utf-8-sig",
     "ligas/Brasil": "38 equipos — formato extra — columnas AvgCH/PSCH — encoding utf-8-sig",
