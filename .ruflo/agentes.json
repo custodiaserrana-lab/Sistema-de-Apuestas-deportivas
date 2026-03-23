@@ -1,1 +1,147 @@
+{
+  "swarm": {
+    "topology": "hierarchical",
+    "maxAgents": 6,
+    "strategy": "data_analysis",
+    "coordinator": "Queen"
+  },
+  "agents": [
+    {
+      "id": "agent_1",
+      "name": "Data Collector",
+      "type": "specialist",
+      "role": "Descarga y valida CSV de football-data.co.uk",
+      "capabilities": ["csv_download", "data_validation", "encoding_fix"],
+      "config": {
+        "encoding": "utf-8-sig",
+        "timeout": 10,
+        "ligas": {
+          "Argentina":      "https://www.football-data.co.uk/new/ARG.csv",
+          "Premier_League": "https://www.football-data.co.uk/mmz4281/2526/E0.csv",
+          "La_Liga":        "https://www.football-data.co.uk/mmz4281/2526/SP1.csv",
+          "Serie_A":        "https://www.football-data.co.uk/mmz4281/2526/I1.csv",
+          "Bundesliga":     "https://www.football-data.co.uk/mmz4281/2526/D1.csv",
+          "Ligue_1":        "https://www.football-data.co.uk/mmz4281/2526/F1.csv",
+          "Eredivisie":     "https://www.football-data.co.uk/mmz4281/2526/N1.csv",
+          "Portugal":       "https://www.football-data.co.uk/mmz4281/2526/P1.csv",
+          "Brasil":         "https://www.football-data.co.uk/new/BRA.csv",
+          "MLS":            "https://www.football-data.co.uk/new/USA.csv"
+        },
+        "normalizacion_columnas": {
+          "Home":   "HomeTeam",
+          "Away":   "AwayTeam",
+          "HG":     "FTHG",
+          "AG":     "FTAG",
+          "Res":    "FTR",
+          "PSCH":   "PSH",
+          "PSCD":   "PSD",
+          "PSCA":   "PSA",
+          "AvgCH":  "AvgH",
+          "AvgCD":  "AvgD",
+          "AvgCA":  "AvgA",
+          "MaxCH":  "MaxH",
+          "MaxCD":  "MaxD",
+          "MaxCA":  "MaxA",
+          "B365CH": "B365H",
+          "B365CD": "B365D",
+          "B365CA": "B365A"
+        }
+      }
+    },
+    {
+      "id": "agent_2",
+      "name": "Ratings Engine",
+      "type": "analyst",
+      "role": "Calcula ratings históricos por equipo",
+      "capabilities": ["statistics", "time_series", "ratings_calculation"],
+      "config": {
+        "ventana_partidos": 6,
+        "minimo_partidos": 3,
+        "formula": "sum(FTHG - FTAG) ultimos 6 partidos como local + sum(FTAG - FTHG) ultimos 6 como visitante",
+        "ligas_formato_extra": ["Argentina", "Brasil", "MLS"],
+        "ligas_formato_principal": ["Premier_League","La_Liga","Serie_A","Bundesliga","Ligue_1","Eredivisie","Portugal"]
+      }
+    },
+    {
+      "id": "agent_3",
+      "name": "Value Detector",
+      "type": "analyst",
+      "role": "Detecta value bets con EV positivo",
+      "capabilities": ["probability_modeling", "ev_calculation", "kelly_criterion"],
+      "config": {
+        "motor_probabilidades": {
+          "p_L": "1.56 * x + 46.47",
+          "p_V": "0.03 * x^2 - 1.27 * x + 23.65",
+          "p_E": "-0.03 * x^2 - 0.29 * x + 29.48"
+        },
+        "edge_minimo": 3.0,
+        "kelly_fraccion": 0.5,
+        "bankroll_ars": 30000,
+        "valor_unidad_ars": 300,
+        "filtros": {
+          "cuota_min": 1.30,
+          "cuota_max": 8.00,
+          "ev_min_accionable": 5.0,
+          "ev_fuerte": 8.0
+        }
+      }
+    },
+    {
+      "id": "agent_4",
+      "name": "Telegram Publisher",
+      "type": "specialist",
+      "role": "Publica señales en Telegram con link de afiliado",
+      "capabilities": ["telegram_api", "message_formatting", "affiliate_links"],
+      "config": {
+        "chat_id": "5976165080",
+        "bot_id": "8752280711",
+        "token_env": "TELEGRAM_TOKEN",
+        "afiliado": {
+          "casa": "Melbet",
+          "codigo": "TUCODIGO",
+          "url": "https://melbet.com/?ref=TUCODIGO",
+          "bono": "+100% primer depósito en pesos 🇦🇷"
+        },
+        "formato_señal": "✅ VALUE BET\n━━━━━━━━━━━━━━━━━━━━\n🏆 {liga}\n⚽ {local} vs {visitante}\n🎯 {apuesta} — cuota: {cuota}\n📊 EV: +{edge}% | Kelly½: {kelly}%\n💵 Stake: ${stake_ars} ARS ({stake_unidades}u)\n👉 Apostá: [Melbet](https://melbet.com/?ref=TUCODIGO)\n━━━━━━━━━━━━━━━━━━━━",
+        "solo_señales_con_historial": false,
+        "ev_minimo_publicar": 5.0
+      }
+    },
+    {
+      "id": "agent_5",
+      "name": "Results Tracker",
+      "type": "specialist",
+      "role": "Registra resultados y ROI en Google Sheets",
+      "capabilities": ["google_sheets", "roi_calculation", "performance_tracking"],
+      "config": {
+        "sheet_id_env": "SHEET_ID",
+        "hoja": "Apuestas",
+        "columnas": ["fecha","liga","local","visitante","apuesta","cuota","stake_ars","resultado","ganancia_ars","bankroll_post","edge","ev"],
+        "actualizar_cada_horas": 24,
+        "scopes": [
+          "https://www.googleapis.com/auth/spreadsheets",
+          "https://www.googleapis.com/auth/drive"
+        ]
+      }
+    },
+    {
+      "id": "agent_6",
+      "name": "Model Optimizer",
+      "type": "optimizer",
+      "role": "Analiza rendimiento y ajusta parámetros del modelo",
+      "capabilities": ["backtesting", "parameter_tuning", "performance_analysis"],
+      "config": {
+        "minimo_apuestas_para_ajuste": 20,
+        "reglas": [
+          "Si yield < 0 en 20+ apuestas → aumentar edge_minimo en 1%",
+          "Si win_rate < 45% → revisar motor_probabilidades",
+          "Si EV promedio < 5% → subir umbral a 6%",
+          "Si ROI > 15% sostenido → mantener parámetros actuales"
+        ],
+        "reporte_semanal": true,
+        "alerta_racha_negativa": 5
+      }
+    }
+  ]
+}
 
