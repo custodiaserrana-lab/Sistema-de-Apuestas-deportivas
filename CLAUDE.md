@@ -98,7 +98,7 @@ Formato señal:
   🎯 {apuesta} — cuota: {cuota}
   📊 EV: +{edge}% | Kelly½: {kelly}%
   💵 Stake: ${stake_ars} ARS
-  👉 Apostá: [Melbet](https://melbet.com/?ref=TUCODIGO)
+  👉 Apostá: [Melbet](https://melbet.com/?ref=5392543)
   ━━━━━━━━━━━━━━━━━━━━
 
 ### Agent 5 — Tracker
