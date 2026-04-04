@@ -1,0 +1,1 @@
+web: python -m telegram_bot.bot
