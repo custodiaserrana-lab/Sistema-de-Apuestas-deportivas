@@ -1,237 +1,147 @@
-# =============================================================
-# telegram_bot/bot.py
-# Bot de Telegram para Futbol Quant Bot
-# Integrado con main.py (motor cuantitativo)
-# Deploy: Railway
-# Custodia Serrana Lab 2026
-# =============================================================
+import os, sys, logging, time, threading
+from pathlib import Path
 
-import os
-import sys
-import logging
-import asyncio
-from datetime import datetime, timezone, timedelta
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent.parent / ".env")
+except ImportError:
+    pass
 
-# -- Path para importar main.py desde la raiz del repo --
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
-from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties
-
-import main as motor
+import telebot
+import main_bot as motor
 from telegram_bot.messages import (
-    msg_bienvenida,
-    msg_escaneando,
-    msg_sin_resultados,
-    msg_error_api,
-    msg_value_bet,
-    msg_resumen_scan,
-    msg_estado,
-    msg_ligas,
-    ts_arg,
-    LIGA_FLAGS,
+    msg_bienvenida, msg_escaneando, msg_sin_resultados,
+    msg_error_api, msg_value_bet, msg_resumen_scan,
+    msg_estado, msg_ligas, ts_arg,
 )
 
-# =============================================================
-# CONFIGURACION
-# =============================================================
-
+Path("logs").mkdir(exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(), logging.FileHandler("logs/bot.log")],
 )
-log = logging.getLogger("FutbolQuantBot")
+log = logging.getLogger("FQBot")
 
-TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-ODDS_API_KEY     = os.environ.get("ODDS_API_KEY", "")
-EDGE_MINIMO      = float(os.environ.get("EDGE_MINIMO", "3.0"))
-HORAS_DEFAULT    = int(os.environ.get("HORAS_DEFAULT", "48"))
-MAX_BETS_MSG     = int(os.environ.get("MAX_BETS_MSG", "15"))  # max bets por mensaje
-
-# Affiliate link Melbet (configurable por env var)
-MELBET_LINK = os.environ.get(
-    "MELBET_LINK",
-    "https://refmelbet.com/L?tag=d_XXXXXX"   # reemplaza con tu link real
-)
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN","").strip()
+ODDS_API_KEY   = os.environ.get("ODDS_API_KEY","").strip()
+HORAS_DEFAULT  = int(os.environ.get("HORAS_DEFAULT","48"))
+MAX_BETS_MSG   = int(os.environ.get("MAX_BETS_MSG","15"))
+MELBET_LINK    = os.environ.get("MELBET_LINK","")
 
 if not TELEGRAM_TOKEN:
-    log.critical("TELEGRAM_BOT_TOKEN no configurado. El bot no puede iniciar.")
+    log.critical("TELEGRAM_BOT_TOKEN no configurado en .env")
     sys.exit(1)
 
-# =============================================================
-# INICIALIZACION
-# =============================================================
+bot = telebot.TeleBot(TELEGRAM_TOKEN, parse_mode="Markdown")
 
-bot = Bot(
-    token=TELEGRAM_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
-)
-dp = Dispatcher()
+def footer():
+    return f"\n\n_Aposta en_ [Melbet]({MELBET_LINK})" if MELBET_LINK else ""
 
-# =============================================================
-# HELPER: ejecutar scan
-# =============================================================
-
-async def ejecutar_scan(horas: int) -> list:
-    """
-    Llama al motor principal (main.py) en un thread separado
-    para no bloquear el event loop de asyncio.
-    """
+def ejecutar_scan(horas):
     if not ODDS_API_KEY:
         raise ValueError("ODDS_API_KEY no configurada")
-
-    loop = asyncio.get_event_loop()
-
-    def _run():
-        todas = []
-        for nombre, sport_key in motor.LIGAS_ODDS_API.items():
-            url_stats = motor.LIGAS_STATS.get(nombre, "")
-            try:
-                apuestas = motor.analizar_liga(
-                    nombre, sport_key, url_stats, ODDS_API_KEY, horas
-                )
-                todas.extend(apuestas)
-            except Exception as e:
-                log.warning(f"{nombre}: error en scan — {e}")
-        return todas
-
-    apuestas = await loop.run_in_executor(None, _run)
-    # Ordenar por edge descendente
-    apuestas.sort(key=lambda x: x.get("edge", 0), reverse=True)
-    return apuestas
-
-
-def footer_melbet() -> str:
-    return f"\n\n_Apostá en_ [Melbet Argentina]({MELBET_LINK})"
-
-
-# =============================================================
-# HANDLERS
-# =============================================================
-
-@dp.message(Command("start", "ayuda", "help"))
-async def cmd_start(msg: types.Message):
-    await msg.answer(msg_bienvenida())
-
-
-@dp.message(Command("ligas"))
-async def cmd_ligas(msg: types.Message):
-    await msg.answer(msg_ligas(motor.LIGAS_ODDS_API))
-
-
-@dp.message(Command("estado"))
-async def cmd_estado(msg: types.Message):
-    api_ok = bool(ODDS_API_KEY)
-    if api_ok:
-        # Verificar conectividad real con un request minimo
+    todas = []
+    for nombre, sport_key in motor.LIGAS_ODDS_API.items():
         try:
-            import requests
-            r = requests.get(
-                "https://api.the-odds-api.com/v4/sports",
-                params={"apiKey": ODDS_API_KEY},
-                timeout=5
-            )
-            api_ok = r.status_code == 200
-        except Exception:
-            api_ok = False
+            apuestas = motor.analizar_liga(
+                nombre, sport_key,
+                motor.LIGAS_STATS.get(nombre,""),
+                ODDS_API_KEY, horas)
+            todas.extend(apuestas)
+        except Exception as e:
+            log.warning(f"{nombre}: {e}")
+    todas.sort(key=lambda x: x.get("edge",0), reverse=True)
+    return todas
 
-    texto = msg_estado(api_ok, len(motor.LIGAS_ODDS_API))
-    await msg.answer(texto)
-
-
-@dp.message(Command("scan"))
-async def cmd_scan(msg: types.Message):
-    await _scan_handler(msg, HORAS_DEFAULT)
-
-
-@dp.message(Command("scan_12"))
-async def cmd_scan_12(msg: types.Message):
-    await _scan_handler(msg, 12)
-
-
-@dp.message(Command("scan_24"))
-async def cmd_scan_24(msg: types.Message):
-    await _scan_handler(msg, 24)
-
-
-@dp.message(Command("scan_72"))
-async def cmd_scan_72(msg: types.Message):
-    await _scan_handler(msg, 72)
-
-
-@dp.message(Command("ranking"))
-async def cmd_ranking(msg: types.Message):
-    """Top 10 value bets por edge en ventana default."""
-    await _scan_handler(msg, HORAS_DEFAULT, solo_ranking=True, top_n=10)
-
-
-async def _scan_handler(msg: types.Message, horas: int,
-                        solo_ranking: bool = False, top_n: int = None):
-    """Handler compartido para todos los comandos de scan."""
-
-    # Mensaje de espera
-    wait_msg = await msg.answer(
-        msg_escaneando(horas, len(motor.LIGAS_ODDS_API))
-    )
-
+def scan_handler(msg, horas, top_n=None, con_rank=False):
+    wait = bot.send_message(msg.chat.id,
+        msg_escaneando(horas, len(motor.LIGAS_ODDS_API)))
     try:
-        apuestas = await ejecutar_scan(horas)
+        apuestas = ejecutar_scan(horas)
     except ValueError:
-        await wait_msg.delete()
-        await msg.answer(msg_error_api())
+        bot.delete_message(msg.chat.id, wait.message_id)
+        bot.send_message(msg.chat.id, msg_error_api())
         return
     except Exception as e:
-        log.error(f"Error en scan: {e}")
-        await wait_msg.delete()
-        await msg.answer(f"Error inesperado: `{e}`")
+        bot.delete_message(msg.chat.id, wait.message_id)
+        bot.send_message(msg.chat.id, f"Error: `{e}`")
         return
 
-    await wait_msg.delete()
+    bot.delete_message(msg.chat.id, wait.message_id)
 
     if not apuestas:
-        await msg.answer(msg_sin_resultados(horas))
+        bot.send_message(msg.chat.id, msg_sin_resultados(horas))
         return
 
-    # Limitar cantidad
-    mostrar = apuestas[:top_n] if top_n else apuestas[:MAX_BETS_MSG]
-    total   = len(apuestas)
+    mostrar = apuestas[: top_n or MAX_BETS_MSG]
+    bot.send_message(msg.chat.id, msg_resumen_scan(apuestas, horas))
 
-    # Resumen
-    await msg.answer(msg_resumen_scan(apuestas, horas))
-
-    # Enviar cada bet como mensaje separado
     for i, ap in enumerate(mostrar, 1):
-        texto = msg_value_bet(ap, rank=i if solo_ranking else None)
-        texto += footer_melbet()
         try:
-            await msg.answer(texto, disable_web_page_preview=True)
-            await asyncio.sleep(0.3)   # evitar flood de Telegram
+            bot.send_message(msg.chat.id,
+                msg_value_bet(ap, rank=i if con_rank else None) + footer(),
+                disable_web_page_preview=True)
+            time.sleep(0.35)
         except Exception as e:
-            log.warning(f"Error enviando bet #{i}: {e}")
+            log.warning(f"Bet #{i}: {e}")
 
-    # Pie con total si hay mas que no se mostraron
-    if total > len(mostrar):
-        restantes = total - len(mostrar)
-        await msg.answer(
-            f"_... y {restantes} bets mas. "
-            f"Usa /scan con edge mas alto o consulta el dashboard._"
-        )
+    sobrantes = len(apuestas) - len(mostrar)
+    if sobrantes > 0:
+        bot.send_message(msg.chat.id,
+            f"_... y {sobrantes} bets mas. Usa /ranking._")
 
+@bot.message_handler(commands=["start","ayuda","help"])
+def cmd_start(msg):
+    bot.send_message(msg.chat.id, msg_bienvenida())
 
-# =============================================================
-# ENTRADA PRINCIPAL
-# =============================================================
+@bot.message_handler(commands=["ligas"])
+def cmd_ligas(msg):
+    bot.send_message(msg.chat.id, msg_ligas(motor.LIGAS_ODDS_API))
 
-async def main():
-    log.info(f"Iniciando Futbol Quant Bot — {ts_arg()} ARG")
-    log.info(f"Ligas: {len(motor.LIGAS_ODDS_API)} | Edge min: {EDGE_MINIMO}% | Horas default: {HORAS_DEFAULT}h")
-    log.info(f"ODDS_API_KEY: {'configurada' if ODDS_API_KEY else 'NO CONFIGURADA'}")
+@bot.message_handler(commands=["estado"])
+def cmd_estado(msg):
+    import requests as req
+    api_ok = False
+    if ODDS_API_KEY:
+        try:
+            r = req.get("https://api.the-odds-api.com/v4/sports",
+                        params={"apiKey": ODDS_API_KEY}, timeout=6)
+            api_ok = r.status_code == 200
+        except Exception:
+            pass
+    bot.send_message(msg.chat.id, msg_estado(api_ok, len(motor.LIGAS_ODDS_API)))
 
-    await dp.start_polling(bot, skip_updates=True)
+@bot.message_handler(commands=["scan"])
+def cmd_scan(msg):
+    threading.Thread(target=scan_handler, args=(msg, HORAS_DEFAULT)).start()
 
+@bot.message_handler(commands=["scan_12"])
+def cmd_scan_12(msg):
+    threading.Thread(target=scan_handler, args=(msg, 12)).start()
+
+@bot.message_handler(commands=["scan_24"])
+def cmd_scan_24(msg):
+    threading.Thread(target=scan_handler, args=(msg, 24)).start()
+
+@bot.message_handler(commands=["scan_72"])
+def cmd_scan_72(msg):
+    threading.Thread(target=scan_handler, args=(msg, 72)).start()
+
+@bot.message_handler(commands=["ranking"])
+def cmd_ranking(msg):
+    threading.Thread(target=scan_handler,
+        args=(msg, HORAS_DEFAULT), kwargs={"top_n":10,"con_rank":True}).start()
 
 if __name__ == "__main__":
-    asyncio.run(main())
-
+    log.info(f"=== Futbol Quant Bot -- {ts_arg()} ARG ===")
+    log.info(f"API key: {'OK' if ODDS_API_KEY else 'FALTA'}")
+    log.info("Bot iniciado. Esperando mensajes...")
+    while True:
+        try:
+            bot.infinity_polling(timeout=30, long_polling_timeout=25)
+        except Exception as e:
+            log.error(f"Desconexion: {e} -- reintentando en 15s")
+            time.sleep(15)
