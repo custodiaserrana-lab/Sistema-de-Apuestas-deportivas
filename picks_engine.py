@@ -1,4 +1,4 @@
-"""
+   """
 picks_engine.py — Motor de selección de picks del día
 Futbol Quant Bot — Custodia Serrana Lab © 2026
 
@@ -93,50 +93,63 @@ def es_pick_valido(pick: dict) -> bool:
 
 def get_picks_from_google_sheets() -> list[dict]:
     """
-    OPCIÓN A: Leer picks desde Google Sheets (tu sistema actual).
-    
-    Requiere: pip install gspread google-auth
-    Configurar: service account JSON en variable GOOGLE_CREDS_JSON
+    OPCIÓN A: Leer picks desde Google Sheets SIN credenciales.
+
+    Requisito: la hoja debe estar compartida como
+    "Cualquiera con el link puede VER" (solo lectura pública).
+
+    Columnas esperadas en la hoja:
+        Fecha | Partido | Liga | Hora | Mercado | Cuota | Prob_Real | Estado
+
+    Estado debe ser "PENDIENTE" para que el pick sea incluido.
+    Fecha debe estar en formato dd/mm/YYYY (ej: 05/04/2026).
     """
+    import csv
+    import io
+    import requests
+
+    sheet_id = os.environ.get("SHEET_ID", "")
+    if not sheet_id:
+        logger.warning("SHEET_ID no configurado en .env")
+        return []
+
+    # Exportar hoja como CSV público — sin autenticación
+    url = (
+        f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+        f"/export?format=csv&gid=0"
+    )
+
     try:
-        import gspread
-        import json
-        import os
-        from google.oauth2.service_account import Credentials
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
 
-        creds_json = os.environ.get("GOOGLE_CREDS_JSON")
-        if not creds_json:
-            return []
-
-        creds_dict = json.loads(creds_json)
-        scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        gc = gspread.authorize(creds)
-
-        # Reemplazar con tu Spreadsheet ID real
-        sheet_id = os.environ.get("SHEET_ID", "")
-        sh = gc.open_by_key(sheet_id)
-        ws = sh.worksheet("Picks")  # nombre de tu hoja
-
-        registros = ws.get_all_records()
         hoy = datetime.now(ARG_TZ).strftime("%d/%m/%Y")
+        reader = csv.DictReader(io.StringIO(r.text))
 
         picks_hoy = []
-        for r in registros:
-            if r.get("Fecha") == hoy and r.get("Estado") == "PENDIENTE":
-                pick = make_pick(
-                    partido=r["Partido"],
-                    liga=r["Liga"],
-                    hora=r["Hora"],
-                    mercado=r["Mercado"],
-                    cuota=float(r["Cuota"]),
-                    prob_real=float(r["Prob_Real"]),
-                )
-                if es_pick_valido(pick):
-                    picks_hoy.append(pick)
+        for row in reader:
+            if row.get("Fecha") == hoy and row.get("Estado") == "PENDIENTE":
+                try:
+                    pick = make_pick(
+                        partido=row["Partido"],
+                        liga=row["Liga"],
+                        hora=row["Hora"],
+                        mercado=row["Mercado"],
+                        cuota=float(row["Cuota"]),
+                        prob_real=float(row["Prob_Real"]),
+                    )
+                    if es_pick_valido(pick):
+                        picks_hoy.append(pick)
+                except (KeyError, ValueError) as e:
+                    logger.error(f"Fila con datos incorrectos: {row} — {e}")
+                    continue
 
+        logger.info(f"📋 {len(picks_hoy)} picks válidos encontrados en Sheets")
         return picks_hoy
 
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"Error HTTP al leer Sheet: {e} — ¿La hoja es pública?")
+        return []
     except Exception as e:
         logger.error(f"Error leyendo Google Sheets: {e}")
         return []
@@ -196,3 +209,4 @@ def get_picks_of_day() -> list[dict]:
     picks = get_picks_hardcoded()
     logger.info(f"📋 {len(picks)} picks de ejemplo disponibles")
     return picks
+                        
